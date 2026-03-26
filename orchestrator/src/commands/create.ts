@@ -235,6 +235,10 @@ export function createHandler(
         `[create] User ${userId} (${username}) → app=${appId} pod=${pod} ✓`
       );
     } catch (err) {
+      const slackErr = err as any;
+      if (slackErr?.data?.errors) {
+        console.error(`[create] Manifest errors for ${userId}:`, JSON.stringify(slackErr.data.errors, null, 2));
+      }
       console.error(`[create] Failed for ${userId}:`, err);
       await respond({
         response_type: "ephemeral",

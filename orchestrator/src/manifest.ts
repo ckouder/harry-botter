@@ -11,36 +11,7 @@ export interface ManifestOptions {
   suffix: string;
 }
 
-export interface SlackManifest {
-  display_information: {
-    name: string;
-    description: string;
-    background_color: string;
-  };
-  features: {
-    bot_user: {
-      display_name: string;
-      always_online: boolean;
-    };
-    slash_commands: never[];
-  };
-  oauth_config: {
-    scopes: {
-      bot: string[];
-    };
-  };
-  settings: {
-    event_subscriptions: {
-      bot_events: string[];
-    };
-    interactivity: {
-      is_enabled: boolean;
-    };
-    org_deploy_enabled: boolean;
-    socket_mode_enabled: boolean;
-    token_rotation_enabled: boolean;
-  };
-}
+export type SlackManifest = Record<string, unknown>;
 
 /**
  * Generate a Slack app manifest for a per-user Harry Botter instance.
@@ -55,6 +26,10 @@ export function generateManifest(opts: ManifestOptions): SlackManifest {
     botName.length > 35 ? `HB (${opts.username})`.slice(0, 35) : botName;
 
   return {
+    _metadata: {
+      major_version: 1,
+      minor_version: 1,
+    },
     display_information: {
       name: appName,
       description: `Personal Harry Botter instance for ${opts.username}`,
@@ -65,7 +40,6 @@ export function generateManifest(opts: ManifestOptions): SlackManifest {
         display_name: appName,
         always_online: true,
       },
-      slash_commands: [],
     },
     oauth_config: {
       scopes: {
@@ -74,7 +48,6 @@ export function generateManifest(opts: ManifestOptions): SlackManifest {
           "im:history",
           "im:read",
           "im:write",
-          "commands",
         ],
       },
     },
