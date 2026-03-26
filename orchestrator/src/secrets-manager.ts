@@ -8,7 +8,7 @@
 
 import type { K8sClient } from "./k8s-client";
 
-const SECRET_PREFIX = "nc-secret-";
+const ANTHROPIC_SECRET_PREFIX = "nc-anthro-";
 const ANTHROPIC_API_BASE = "https://api.anthropic.com";
 
 export interface KeyValidationResult {
@@ -18,9 +18,10 @@ export interface KeyValidationResult {
 
 /**
  * Derive the K8s Secret name for a user's Anthropic key.
+ * Separate from the pod secret (nc-{hash}-secret) to avoid conflicts.
  */
-export function getUserSecretName(userHash: string): string {
-  return `${SECRET_PREFIX}${userHash}`;
+export function getUserAnthropicSecretName(userHash: string): string {
+  return `${ANTHROPIC_SECRET_PREFIX}${userHash}`;
 }
 
 /**
@@ -31,17 +32,14 @@ export function getUserSecretName(userHash: string): string {
 export async function validateAnthropicKey(
   key: string
 ): Promise<KeyValidationResult> {
-  // Format check
   if (!key.startsWith("sk-ant-")) {
     return {
       valid: false,
-      error:
-        "Invalid key format. Anthropic API keys start with `sk-ant-`.",
+      error: "Invalid key format. Anthropic API keys start with `sk-ant-`.",
     };
   }
 
-  // Liveness check — send a minimal request to verify the key works.
-  // We use the messages endpoint with max_tokens=1 to minimise cost.
+  // Liveness check — minimal messages request
   try {
     const res = await fetch(`${ANTHROPIC_API_BASE}/v1/messages`, {
       method: "POST",
@@ -60,22 +58,20 @@ export async function validateAnthropicKey(
     if (res.status === 401) {
       return { valid: false, error: "API key is invalid or revoked." };
     }
-
     if (res.status === 403) {
-      return {
-        valid: false,
-        error: "API key lacks required permissions.",
-      };
+      return { valid: false, error: "API key lacks required permissions." };
     }
 
-    // 200 or 429 (rate limited but key is valid) are both acceptable
+    // 200 or 429 (rate limited but key is valid) → valid
     if (res.ok || res.status === 429) {
       return { valid: true };
     }
 
-    // 400 with a model-not-found is still a valid key, just wrong model
+    // 400 with model error still means key is valid
     if (res.status === 400) {
-      const body = await res.json().catch(() => null);
+      const body = (await res.json().catch(() => null)) as {
+        error?: { type?: string; message?: string };
+      } | null;
       if (
         body?.error?.type === "invalid_request_error" &&
         body?.error?.message?.includes("model")
@@ -98,57 +94,65 @@ export async function validateAnthropicKey(
 
 /**
  * Create a K8s Secret containing the user's Anthropic API key.
+ * Uses the K8sClient's low-level createSecret which takes userId + data.
+ * We create a separate named secret for the Anthropic key.
  */
-export async function createUserSecret(
+export async function createAnthropicSecret(
   k8s: K8sClient,
   userHash: string,
-  apiKey: string,
-  namespace: string
-): Promise<void> {
-  const secretName = getUserSecretName(userHash);
-  await k8s.createSecret(secretName, namespace, {
-    ANTHROPIC_API_KEY: apiKey,
-  });
+  apiKey: string
+): Promise<string> {
+  const secretName = getUserAnthropicSecretName(userHash);
+
+  // Check if it already exists — if so, update instead
+  const exists = await k8s.secretExists(secretName);
+  if (exists) {
+    await k8s.updateSecret(secretName, { ANTHROPIC_API_KEY: apiKey });
+  } else {
+    // Use low-level create — we need a custom secret name, not the pod-derived one.
+    // The K8sClient.createSecret derives name from userId. For anthropic secrets
+    // we use updateSecret on a pre-created secret or create directly.
+    // Since K8sClient.createSecret uses userId-based naming, we'll handle
+    // anthropic secrets through updateSecret after initial bootstrap.
+    // For the first create, we'll need a direct method.
+    await k8s.createAnthropicSecret(secretName, { ANTHROPIC_API_KEY: apiKey });
+  }
+
+  return secretName;
 }
 
 /**
- * Update an existing K8s Secret with a new API key.
+ * Update an existing Anthropic key secret.
  */
-export async function updateUserSecret(
+export async function updateAnthropicSecret(
   k8s: K8sClient,
   userHash: string,
-  apiKey: string,
-  namespace: string
+  apiKey: string
 ): Promise<void> {
-  const secretName = getUserSecretName(userHash);
-  await k8s.updateSecret(secretName, namespace, {
-    ANTHROPIC_API_KEY: apiKey,
-  });
+  const secretName = getUserAnthropicSecretName(userHash);
+  await k8s.updateSecret(secretName, { ANTHROPIC_API_KEY: apiKey });
 }
 
 /**
- * Delete a user's K8s Secret.
+ * Delete a user's Anthropic key secret.
  */
-export async function deleteUserSecret(
+export async function deleteAnthropicSecret(
   k8s: K8sClient,
-  userHash: string,
-  namespace: string
+  userHash: string
 ): Promise<void> {
-  const secretName = getUserSecretName(userHash);
-  await k8s.deleteSecret(secretName, namespace);
+  const secretName = getUserAnthropicSecretName(userHash);
+  await k8s.deleteSecret(secretName);
 }
 
 /**
- * Check whether the user has a personal secret stored.
+ * Check whether the user has a personal Anthropic key stored.
  */
-export async function hasUserSecret(
+export async function hasAnthropicSecret(
   k8s: K8sClient,
-  userHash: string,
-  namespace: string
+  userHash: string
 ): Promise<boolean> {
-  const secretName = getUserSecretName(userHash);
-  const secret = await k8s.getSecret(secretName, namespace);
-  return secret !== null;
+  const secretName = getUserAnthropicSecretName(userHash);
+  return k8s.secretExists(secretName);
 }
 
 /**

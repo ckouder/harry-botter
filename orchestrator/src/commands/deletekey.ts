@@ -7,9 +7,9 @@ import { Registry } from "../registry";
 import type { Config } from "../config";
 import type { K8sClient } from "../k8s-client";
 import {
-  deleteUserSecret,
-  hasUserSecret,
-  getUserSecretName,
+  deleteAnthropicSecret as deleteUserSecret,
+  hasAnthropicSecret as hasUserSecret,
+  getUserAnthropicSecretName as getUserSecretName,
 } from "../secrets-manager";
 
 function userHash(userId: string): string {
@@ -32,7 +32,7 @@ export function deletekeyHandler(
     const hash = userHash(userId);
 
     // Check that user has a secret to delete
-    const exists = await hasUserSecret(k8s, hash, config.k8sNamespace);
+    const exists = await hasUserSecret(k8s, hash);
     if (!exists) {
       await respond({
         response_type: "ephemeral",
@@ -45,7 +45,7 @@ export function deletekeyHandler(
 
     try {
       // Delete the K8s Secret
-      await deleteUserSecret(k8s, hash, config.k8sNamespace);
+      await deleteUserSecret(k8s, hash);
 
       console.log(
         `[deletekey] User ${userId} deleted Anthropic key → secret=${getUserSecretName(hash)}`
@@ -55,7 +55,7 @@ export function deletekeyHandler(
 
       if (config.orgAnthropicKey) {
         // Org fallback available — restart pod with org key
-        if (podStatus === "running") {
+        if (podStatus && podStatus.phase === "Running") {
           await k8s.restartPod(podName, config.k8sNamespace);
         }
         await respond({

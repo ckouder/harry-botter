@@ -8,11 +8,11 @@ import type { Config } from "../config";
 import type { K8sClient } from "../k8s-client";
 import {
   validateAnthropicKey,
-  createUserSecret,
-  getUserSecretName,
+  createAnthropicSecret,
+  getUserAnthropicSecretName,
 } from "../secrets-manager";
 
-function userHash(userId: string): string {
+function uHash(userId: string): string {
   return crypto.createHash("sha256").update(userId).digest("hex").slice(0, 8);
 }
 
@@ -29,9 +29,8 @@ export function setkeyHandler(
     await ack();
 
     const userId = command.user_id;
-    // command.text is "setkey <key>" — extract the key part
     const parts = command.text.trim().split(/\s+/);
-    const apiKey = parts[1]; // parts[0] is "setkey"
+    const apiKey = parts[1];
 
     if (!apiKey) {
       await respond({
@@ -41,7 +40,6 @@ export function setkeyHandler(
       return;
     }
 
-    // Validate key format and liveness
     const validation = await validateAnthropicKey(apiKey);
     if (!validation.valid) {
       await respond({
@@ -51,22 +49,20 @@ export function setkeyHandler(
       return;
     }
 
-    const hash = userHash(userId);
+    const hash = uHash(userId);
     const podName = `nc-${hash}`;
 
     try {
-      // Store as K8s Secret
-      await createUserSecret(k8s, hash, apiKey, config.k8sNamespace);
+      await createAnthropicSecret(k8s, hash, apiKey);
 
       // If pod is running, restart to pick up the new key
-      const podStatus = await k8s.getPodStatus(podName, config.k8sNamespace);
-      if (podStatus === "running") {
-        await k8s.restartPod(podName, config.k8sNamespace);
+      const podStatus = await k8s.getPodStatus(podName);
+      if (podStatus?.phase === "Running") {
+        await k8s.restartPod(podName);
       }
 
-      // Log without the key
       console.log(
-        `[setkey] User ${userId} set personal Anthropic key → secret=${getUserSecretName(hash)}`
+        `[setkey] User ${userId} set personal Anthropic key → secret=${getUserAnthropicSecretName(hash)}`
       );
 
       await respond({

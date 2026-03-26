@@ -78,8 +78,8 @@ export class Registry {
   create(bot: Omit<UserBot, "created_at">): UserBot {
     this.db
       .prepare(
-        `INSERT INTO user_bots (slack_user_id, pod_name, app_id, bot_token, app_config_token, status)
-         VALUES (?, ?, ?, ?, ?, ?)`
+        `INSERT INTO user_bots (slack_user_id, pod_name, app_id, bot_token, app_config_token, status, retention_mode)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         bot.slack_user_id,
@@ -87,7 +87,8 @@ export class Registry {
         bot.app_id,
         bot.bot_token,
         bot.app_config_token,
-        bot.status
+        bot.status,
+        bot.retention_mode
       );
 
     return this.get(bot.slack_user_id)!;

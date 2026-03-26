@@ -8,9 +8,9 @@ import type { Config } from "../config";
 import type { K8sClient } from "../k8s-client";
 import {
   validateAnthropicKey,
-  updateUserSecret,
-  hasUserSecret,
-  getUserSecretName,
+  updateAnthropicSecret as updateUserSecret,
+  hasAnthropicSecret as hasUserSecret,
+  getUserAnthropicSecretName as getUserSecretName,
 } from "../secrets-manager";
 
 function userHash(userId: string): string {
@@ -44,7 +44,7 @@ export function rotatekeyHandler(
     const hash = userHash(userId);
 
     // Check that user has an existing secret to rotate
-    const exists = await hasUserSecret(k8s, hash, config.k8sNamespace);
+    const exists = await hasUserSecret(k8s, hash);
     if (!exists) {
       await respond({
         response_type: "ephemeral",
@@ -67,11 +67,11 @@ export function rotatekeyHandler(
 
     try {
       // Update the K8s Secret
-      await updateUserSecret(k8s, hash, newKey, config.k8sNamespace);
+      await updateUserSecret(k8s, hash, newKey);
 
       // Restart pod to pick up new key
       const podStatus = await k8s.getPodStatus(podName, config.k8sNamespace);
-      if (podStatus === "running") {
+      if (podStatus && podStatus.phase === "Running") {
         await k8s.restartPod(podName, config.k8sNamespace);
       }
 

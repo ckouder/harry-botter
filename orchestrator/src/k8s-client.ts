@@ -38,7 +38,7 @@ function userLabels(userId: string): Record<string, string> {
 
 export class K8sClient {
   private coreApi: k8s.CoreV1Api;
-  private namespace: string;
+  private defaultNamespace: string;
   private nanoclawImage: string;
 
   constructor(config: Config) {
@@ -49,9 +49,13 @@ export class K8sClient {
       kc.loadFromDefault();
     }
     this.coreApi = kc.makeApiClient(k8s.CoreV1Api);
-    this.namespace = config.k8sNamespace;
+    this.defaultNamespace = config.k8sNamespace;
     this.nanoclawImage =
-      process.env.NANOCLAW_IMAGE || "harrybotter/nanoclaw-base:latest";
+      process.env.NANOCLAW_IMAGE || "localhost:5000/nanoclaw-base:latest";
+  }
+
+  private ns(namespace?: string): string {
+    return namespace || this.defaultNamespace;
   }
 
   async createPod(userId: string, botToken: string): Promise<string> {
@@ -61,7 +65,7 @@ export class K8sClient {
     const pod: k8s.V1Pod = {
       metadata: {
         name,
-        namespace: this.namespace,
+        namespace: this.defaultNamespace,
         labels,
       },
       spec: {
@@ -73,7 +77,7 @@ export class K8sClient {
           {
             name: "nanoclaw",
             image: this.nanoclawImage,
-            imagePullPolicy: "IfNotPresent",
+            imagePullPolicy: "Always",
             ports: [
               {
                 name: "health",
@@ -148,30 +152,47 @@ export class K8sClient {
     };
 
     await this.coreApi.createNamespacedPod({
-      namespace: this.namespace,
+      namespace: this.defaultNamespace,
       body: pod,
     });
     return name;
   }
 
-  async deletePod(name: string, gracePeriodSeconds = 30): Promise<void> {
+  async deletePod(name: string, gracePeriodSecondsOrNamespace?: number | string, gracePeriod?: number): Promise<void> {
+    // Support both (name, grace) and (name, namespace, grace) signatures
+    let namespace: string;
+    let grace: number;
+    if (typeof gracePeriodSecondsOrNamespace === "string") {
+      namespace = gracePeriodSecondsOrNamespace;
+      grace = gracePeriod ?? 30;
+    } else {
+      namespace = this.defaultNamespace;
+      grace = gracePeriodSecondsOrNamespace ?? 30;
+    }
+
     try {
       await this.coreApi.deleteNamespacedPod({
         name,
-        namespace: this.namespace,
-        gracePeriodSeconds,
+        namespace,
+        gracePeriodSeconds: grace,
       });
     } catch (err: any) {
-      if (err?.response?.statusCode === 404) return; // already gone
+      if (err?.response?.statusCode === 404 || err?.statusCode === 404) return;
       throw err;
     }
   }
 
-  async getPodStatus(name: string): Promise<PodStatus | null> {
+  /**
+   * Get pod status. Supports both:
+   *  - getPodStatus(name) — uses default namespace, returns PodStatus | null
+   *  - getPodStatus(name, namespace) — for compatibility with secrets-manager etc,
+   *    returns PodStatus | null (callers may compare to string "running")
+   */
+  async getPodStatus(name: string, namespace?: string): Promise<PodStatus | null> {
     try {
       const resp = await this.coreApi.readNamespacedPod({
         name,
-        namespace: this.namespace,
+        namespace: this.ns(namespace),
       });
       const pod = resp;
       const status = pod.status;
@@ -192,7 +213,8 @@ export class K8sClient {
           })) || [],
       };
     } catch (err: any) {
-      if (err?.response?.statusCode === 404) return null;
+      if (err?.response?.statusCode === 404 || err?.statusCode === 404)
+        return null;
       throw err;
     }
   }
@@ -203,7 +225,7 @@ export class K8sClient {
       .join(",");
 
     const resp = await this.coreApi.listNamespacedPod({
-      namespace: this.namespace,
+      namespace: this.defaultNamespace,
       labelSelector,
     });
 
@@ -226,46 +248,148 @@ export class K8sClient {
     });
   }
 
+  /**
+   * Create a K8s Secret.
+   * Supports:
+   *  - createSecret(userId, data) — uses default namespace, names it nc-{hash}-secret
+   *  - createSecret(secretName, namespace, data) — explicit name/namespace
+   */
   async createSecret(
-    userId: string,
-    data: Record<string, string>
+    userIdOrName: string,
+    dataOrNamespace: Record<string, string> | string,
+    maybeData?: Record<string, string>
   ): Promise<string> {
-    const name = `${podNameFromUserId(userId)}-secret`;
-    const labels = userLabels(userId);
+    let name: string;
+    let namespace: string;
+    let data: Record<string, string>;
 
-    // Base64-encode values
+    if (typeof dataOrNamespace === "string") {
+      // createSecret(secretName, namespace, data)
+      name = userIdOrName;
+      namespace = dataOrNamespace;
+      data = maybeData!;
+    } else {
+      // createSecret(userId, data)
+      name = `${podNameFromUserId(userIdOrName)}-secret`;
+      namespace = this.defaultNamespace;
+      data = dataOrNamespace;
+    }
+
+    const labels = { ...LABELS };
     const encodedData: Record<string, string> = {};
     for (const [k, v] of Object.entries(data)) {
       encodedData[k] = Buffer.from(v).toString("base64");
     }
 
     const secret: k8s.V1Secret = {
-      metadata: {
-        name,
-        namespace: this.namespace,
-        labels,
-      },
+      metadata: { name, namespace, labels },
       type: "Opaque",
       data: encodedData,
     };
 
     await this.coreApi.createNamespacedSecret({
-      namespace: this.namespace,
+      namespace,
       body: secret,
     });
     return name;
   }
 
-  async deleteSecret(name: string): Promise<void> {
+  async deleteSecret(name: string, namespace?: string): Promise<void> {
     try {
       await this.coreApi.deleteNamespacedSecret({
         name,
-        namespace: this.namespace,
+        namespace: this.ns(namespace),
       });
     } catch (err: any) {
-      if (err?.response?.statusCode === 404) return;
+      if (err?.response?.statusCode === 404 || err?.statusCode === 404) return;
       throw err;
     }
+  }
+
+  async getSecret(
+    name: string,
+    namespace?: string
+  ): Promise<k8s.V1Secret | null> {
+    try {
+      const resp = await this.coreApi.readNamespacedSecret({
+        name,
+        namespace: this.ns(namespace),
+      });
+      return resp;
+    } catch (err: any) {
+      if (err?.response?.statusCode === 404 || err?.statusCode === 404)
+        return null;
+      throw err;
+    }
+  }
+
+  /**
+   * Update a K8s Secret.
+   * Supports:
+   *  - updateSecret(name, data) — uses default namespace
+   *  - updateSecret(name, namespace, data) — explicit namespace
+   */
+  async updateSecret(
+    name: string,
+    dataOrNamespace: Record<string, string> | string,
+    maybeData?: Record<string, string>
+  ): Promise<void> {
+    let namespace: string;
+    let data: Record<string, string>;
+
+    if (typeof dataOrNamespace === "string") {
+      namespace = dataOrNamespace;
+      data = maybeData!;
+    } else {
+      namespace = this.defaultNamespace;
+      data = dataOrNamespace;
+    }
+
+    const encodedData: Record<string, string> = {};
+    for (const [k, v] of Object.entries(data)) {
+      encodedData[k] = Buffer.from(v).toString("base64");
+    }
+
+    await this.coreApi.patchNamespacedSecret({
+      name,
+      namespace: this.ns(namespace),
+      body: { data: encodedData },
+    });
+  }
+
+  /**
+   * Check whether a secret exists.
+   */
+  async secretExists(name: string, namespace?: string): Promise<boolean> {
+    const secret = await this.getSecret(name, namespace);
+    return secret !== null;
+  }
+
+  /**
+   * Create an Anthropic-specific secret by explicit name.
+   */
+  async createAnthropicSecret(
+    secretName: string,
+    data: Record<string, string>,
+    namespace?: string
+  ): Promise<string> {
+    const ns = this.ns(namespace);
+    const encodedData: Record<string, string> = {};
+    for (const [k, v] of Object.entries(data)) {
+      encodedData[k] = Buffer.from(v).toString("base64");
+    }
+
+    const secret: k8s.V1Secret = {
+      metadata: { name: secretName, namespace: ns, labels: { ...LABELS } },
+      type: "Opaque",
+      data: encodedData,
+    };
+
+    await this.coreApi.createNamespacedSecret({
+      namespace: ns,
+      body: secret,
+    });
+    return secretName;
   }
 
   async createService(userId: string): Promise<string> {
@@ -276,7 +400,7 @@ export class K8sClient {
     const svc: k8s.V1Service = {
       metadata: {
         name,
-        namespace: this.namespace,
+        namespace: this.defaultNamespace,
         labels,
       },
       spec: {
@@ -297,27 +421,33 @@ export class K8sClient {
     };
 
     await this.coreApi.createNamespacedService({
-      namespace: this.namespace,
+      namespace: this.defaultNamespace,
       body: svc,
     });
     return name;
   }
 
-  async deleteService(name: string): Promise<void> {
+  async deleteService(name: string, namespace?: string): Promise<void> {
     try {
       await this.coreApi.deleteNamespacedService({
         name,
-        namespace: this.namespace,
+        namespace: this.ns(namespace),
       });
     } catch (err: any) {
-      if (err?.response?.statusCode === 404) return;
+      if (err?.response?.statusCode === 404 || err?.statusCode === 404) return;
       throw err;
     }
   }
 
   /**
+   * Restart a pod by deleting it (relies on K8s restartPolicy: Always).
+   */
+  async restartPod(name: string, namespace?: string): Promise<void> {
+    await this.deletePod(name, namespace || this.defaultNamespace, 0);
+  }
+
+  /**
    * Poll until pod is ready or timeout.
-   * @returns true if ready, false if timed out
    */
   async waitForReady(
     name: string,

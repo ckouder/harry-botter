@@ -211,6 +211,7 @@ export function createHandler(
         bot_token: botToken,
         app_config_token: "",
         status: "active",
+        retention_mode: config.defaultRetentionMode,
       });
 
       await respond({

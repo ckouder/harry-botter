@@ -1,0 +1,37 @@
+---
+# PersistentVolume for shared user backup storage.
+# All user backups are stored under /backups/{user_hash}/.
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: harrybotter-backup-pv
+  labels:
+    app: harry-botter
+    component: backup
+spec:
+  capacity:
+    storage: 50Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: standard
+  hostPath:
+    path: /mnt/data/harry-botter-backups
+    type: DirectoryOrCreate
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: harrybotter-backup-pvc
+  namespace: nanoclaw
+  labels:
+    app: harry-botter
+    component: backup
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 50Gi
+  storageClassName: standard
+  volumeName: harrybotter-backup-pv
