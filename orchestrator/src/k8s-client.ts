@@ -298,7 +298,9 @@ export class K8sClient {
         body: secret,
       });
     } catch (err: any) {
-      if (err?.response?.statusCode === 409 || err?.statusCode === 409) {
+      const code = err?.response?.statusCode ?? err?.statusCode ?? err?.body?.code ?? err?.code;
+      const msg = String(err?.message ?? err?.body ?? "");
+      if (code === 409 || msg.includes("AlreadyExists") || msg.includes("409")) {
         // Already exists — update instead
         await this.coreApi.replaceNamespacedSecret({
           name,
