@@ -83,7 +83,7 @@ export class K8sClient {
             ports: [
               {
                 name: "health",
-                containerPort: 3000,
+                containerPort: 4000,
                 protocol: "TCP",
               },
             ],
@@ -114,7 +114,7 @@ export class K8sClient {
               },
               {
                 name: "HEALTHCHECK_PORT",
-                value: "3000",
+                value: "4000",
               },
             ],
             resources: {
@@ -129,7 +129,7 @@ export class K8sClient {
               failureThreshold: 3,
             },
             readinessProbe: {
-              httpGet: { path: "/ready", port: "health" as any },
+              httpGet: { path: "/health", port: "health" as any },
               initialDelaySeconds: 5,
               periodSeconds: 10,
               timeoutSeconds: 3,
@@ -432,7 +432,7 @@ export class K8sClient {
         ports: [
           {
             name: "health",
-            port: 3000,
+            port: 4000,
             targetPort: "health" as any,
             protocol: "TCP",
           },

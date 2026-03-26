@@ -4,7 +4,6 @@
 
 set -e
 
-HEALTHCHECK_PID=""
 NANOCLAW_PID=""
 SHUTTING_DOWN=0
 
@@ -18,14 +17,7 @@ cleanup() {
   if [ -n "$NANOCLAW_PID" ] && kill -0 "$NANOCLAW_PID" 2>/dev/null; then
     echo "[entrypoint] Stopping NanoClaw (PID $NANOCLAW_PID)..."
     kill -TERM "$NANOCLAW_PID" 2>/dev/null || true
-  fi
 
-  if [ -n "$HEALTHCHECK_PID" ] && kill -0 "$HEALTHCHECK_PID" 2>/dev/null; then
-    kill -TERM "$HEALTHCHECK_PID" 2>/dev/null || true
-  fi
-
-  # Wait up to 25s for NanoClaw to exit gracefully
-  if [ -n "$NANOCLAW_PID" ]; then
     WAIT_COUNT=0
     while kill -0 "$NANOCLAW_PID" 2>/dev/null && [ "$WAIT_COUNT" -lt 25 ]; do
       sleep 1
@@ -37,10 +29,6 @@ cleanup() {
     fi
   fi
 
-  if [ -n "$HEALTHCHECK_PID" ] && kill -0 "$HEALTHCHECK_PID" 2>/dev/null; then
-    kill -9 "$HEALTHCHECK_PID" 2>/dev/null || true
-  fi
-
   echo "[entrypoint] Shutdown complete"
   exit 0
 }
@@ -50,30 +38,10 @@ trap cleanup TERM INT QUIT
 echo "[entrypoint] Starting NanoClaw pod"
 echo "[entrypoint] User ID: ${NANOCLAW_USER_ID:-unknown}"
 
-# 1. Start healthcheck server in background
-echo "[entrypoint] Starting healthcheck server..."
-node /opt/nanoclaw/healthcheck-server.js &
-HEALTHCHECK_PID=$!
-
-# 2. Set up writable working directory
-# NanoClaw uses cwd for store/, groups/, data/ dirs.
-# /data is the writable emptyDir volume; /app is read-only.
+# 1. Set up writable working directory
 mkdir -p /data/store /data/groups /data/data 2>/dev/null || true
 
-# 3. Start NanoClaw from /data (writable) but run /app/dist code
+# 2. Start NanoClaw (it has its own HTTP health endpoint on port 4000)
 echo "[entrypoint] Starting NanoClaw..."
 cd /data
-HTTP_WEBHOOK_ENABLED=true node /app/dist/index.js &
-NANOCLAW_PID=$!
-echo "[entrypoint] NanoClaw PID: $NANOCLAW_PID"
-
-# 4. Wait for any child to exit
-wait -n "$NANOCLAW_PID" "$HEALTHCHECK_PID" 2>/dev/null || true
-EXIT_CODE=$?
-
-if [ "$SHUTTING_DOWN" = "0" ]; then
-  echo "[entrypoint] Child process exited unexpectedly (code: $EXIT_CODE)"
-  cleanup
-fi
-
-exit "$EXIT_CODE"
+HTTP_WEBHOOK_ENABLED=true exec node /app/dist/index.js
