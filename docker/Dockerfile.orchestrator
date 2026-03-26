@@ -1,0 +1,30 @@
+FROM node:22-alpine AS builder
+
+WORKDIR /app
+
+COPY orchestrator/package.json orchestrator/package-lock.json* ./
+RUN npm ci --ignore-scripts
+# Rebuild better-sqlite3 for Alpine
+RUN npm rebuild better-sqlite3
+
+COPY orchestrator/tsconfig.json ./
+COPY orchestrator/src/ ./src/
+RUN npm run build
+
+# --- Production ---
+FROM node:22-alpine
+
+RUN apk add --no-cache tini
+WORKDIR /app
+
+COPY --from=builder /app/package.json ./
+COPY --from=builder /app/node_modules/ ./node_modules/
+COPY --from=builder /app/dist/ ./dist/
+
+RUN mkdir -p /app/data
+
+ENV NODE_ENV=production
+ENV DATABASE_PATH=/app/data/harry-botter.db
+
+ENTRYPOINT ["/sbin/tini", "--"]
+CMD ["node", "dist/index.js"]

@@ -1,0 +1,127 @@
+import Database from "better-sqlite3";
+import * as path from "path";
+import * as fs from "fs";
+
+export interface UserBot {
+  slack_user_id: string;
+  pod_name: string;
+  app_id: string;
+  bot_token: string;
+  app_config_token: string;
+  created_at: string;
+  status: string; // "active" | "stopped" | "destroyed"
+}
+
+export class Registry {
+  private db: Database.Database;
+
+  constructor(dbPath: string) {
+    const dir = path.dirname(dbPath);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+
+    this.db = new Database(dbPath);
+    this.db.pragma("journal_mode = WAL");
+    this.db.pragma("foreign_keys = ON");
+    this.migrate();
+  }
+
+  private migrate(): void {
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS user_bots (
+        slack_user_id TEXT PRIMARY KEY,
+        pod_name TEXT NOT NULL,
+        app_id TEXT NOT NULL,
+        bot_token TEXT NOT NULL DEFAULT '',
+        app_config_token TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        status TEXT NOT NULL DEFAULT 'active'
+      );
+
+      CREATE TABLE IF NOT EXISTS token_rotations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        slack_user_id TEXT NOT NULL REFERENCES user_bots(slack_user_id),
+        rotated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        reason TEXT
+      );
+    `);
+  }
+
+  get(userId: string): UserBot | undefined {
+    return this.db
+      .prepare("SELECT * FROM user_bots WHERE slack_user_id = ?")
+      .get(userId) as UserBot | undefined;
+  }
+
+  getActive(userId: string): UserBot | undefined {
+    return this.db
+      .prepare(
+        "SELECT * FROM user_bots WHERE slack_user_id = ? AND status = 'active'"
+      )
+      .get(userId) as UserBot | undefined;
+  }
+
+  create(bot: Omit<UserBot, "created_at">): UserBot {
+    this.db
+      .prepare(
+        `INSERT INTO user_bots (slack_user_id, pod_name, app_id, bot_token, app_config_token, status)
+         VALUES (?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        bot.slack_user_id,
+        bot.pod_name,
+        bot.app_id,
+        bot.bot_token,
+        bot.app_config_token,
+        bot.status
+      );
+
+    return this.get(bot.slack_user_id)!;
+  }
+
+  updateStatus(userId: string, status: string): void {
+    this.db
+      .prepare("UPDATE user_bots SET status = ? WHERE slack_user_id = ?")
+      .run(status, userId);
+  }
+
+  updateToken(userId: string, botToken: string, reason?: string): void {
+    const update = this.db.transaction(() => {
+      this.db
+        .prepare("UPDATE user_bots SET bot_token = ? WHERE slack_user_id = ?")
+        .run(botToken, userId);
+
+      this.db
+        .prepare(
+          "INSERT INTO token_rotations (slack_user_id, reason) VALUES (?, ?)"
+        )
+        .run(userId, reason || "manual rotation");
+    });
+    update();
+  }
+
+  delete(userId: string): boolean {
+    const result = this.db
+      .prepare("DELETE FROM user_bots WHERE slack_user_id = ?")
+      .run(userId);
+    return result.changes > 0;
+  }
+
+  listActive(): UserBot[] {
+    return this.db
+      .prepare("SELECT * FROM user_bots WHERE status = 'active'")
+      .all() as UserBot[];
+  }
+
+  count(): number {
+    const row = this.db
+      .prepare("SELECT COUNT(*) as count FROM user_bots WHERE status = 'active'")
+      .get() as { count: number };
+    return row.count;
+  }
+
+  close(): void {
+    this.db.close();
+  }
+}
