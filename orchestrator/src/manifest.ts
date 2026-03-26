@@ -56,12 +56,17 @@ export function generateManifest(opts: ManifestOptions): SlackManifest {
       },
     },
     settings: {
-      event_subscriptions: {
-        ...(opts.eventGatewayUrl && opts.appId
-          ? { request_url: `${opts.eventGatewayUrl}/slack/events/${opts.appId}` }
-          : {}),
-        bot_events: ["message.im"],
-      },
+      // Event subscriptions require a request_url when socket_mode is off.
+      // On initial creation we don't have appId yet, so omit events entirely.
+      // They get added in the manifest.update call after we have the appId.
+      ...(opts.eventGatewayUrl && opts.appId
+        ? {
+            event_subscriptions: {
+              request_url: `${opts.eventGatewayUrl}/slack/events/${opts.appId}`,
+              bot_events: ["message.im"],
+            },
+          }
+        : {}),
       interactivity: {
         is_enabled: false,
       },
