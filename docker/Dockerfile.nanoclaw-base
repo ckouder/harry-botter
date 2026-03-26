@@ -1,40 +1,56 @@
-# NanoClaw Base Image — lightweight OpenClaw runtime
-# Used as base for per-user NanoClaw pod instances
+# NanoClaw base image for Harry Botter per-user pods
+# Source: https://github.com/qwibitai/nanoclaw
+
+FROM node:22-slim AS builder
+
+WORKDIR /build
+
+# Install git for cloning
+RUN apt-get update && apt-get install -y git && rm -rf /var/lib/apt/lists/*
+
+# Clone NanoClaw
+RUN git clone --depth 1 https://github.com/qwibitai/nanoclaw.git .
+
+# Install dependencies and build
+RUN npm ci
+RUN npm run build
+
+# --- Production stage ---
 FROM node:22-slim
 
-LABEL maintainer="harrybotter"
 LABEL app.kubernetes.io/name="nanoclaw-base"
 LABEL app.kubernetes.io/part-of="harrybotter"
 
-# Install system deps (curl for debugging, procps for pgrep in healthcheck, tini for PID 1)
+# Install tini for proper signal handling + procps for health checks
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends curl procps tini && \
+    apt-get install -y --no-install-recommends tini procps && \
     rm -rf /var/lib/apt/lists/*
 
-# Install openclaw globally
-RUN npm install -g openclaw && \
-    npm cache clean --force
+WORKDIR /app
 
-# Create workspace and nanoclaw directories
-RUN mkdir -p /data /opt/nanoclaw
+# Copy built NanoClaw
+COPY --from=builder /build/package.json /build/package-lock.json* ./
+COPY --from=builder /build/node_modules/ ./node_modules/
+COPY --from=builder /build/dist/ ./dist/
 
-# Copy healthcheck server and entrypoint
+# Create workspace and support directories
+RUN mkdir -p /data /tmp/nanoclaw
+
+# Health check server + entrypoint
 COPY docker/healthcheck-server.js /opt/nanoclaw/healthcheck-server.js
 COPY docker/entrypoint.sh /opt/nanoclaw/entrypoint.sh
 RUN chmod +x /opt/nanoclaw/entrypoint.sh
 
-# Create non-root user
+# Create non-root user (numeric UID for K8s runAsNonRoot)
 RUN groupadd --gid 1001 nanoclaw && \
     useradd --uid 1001 --gid nanoclaw --create-home --shell /bin/bash nanoclaw && \
-    chown -R nanoclaw:nanoclaw /data /opt/nanoclaw
-
-# Healthcheck via the dedicated healthcheck server (port 3000)
-HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-    CMD curl -sf http://localhost:3000/health || exit 1
+    chown -R nanoclaw:nanoclaw /data /app /tmp/nanoclaw /opt/nanoclaw
 
 EXPOSE 3000
 
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD node /opt/nanoclaw/healthcheck-server.js --check || exit 1
+
 USER 1001
-WORKDIR /data
 
 ENTRYPOINT ["tini", "--", "/opt/nanoclaw/entrypoint.sh"]
