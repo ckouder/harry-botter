@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { App, LogLevel } from "@slack/bolt";
 import { loadConfig } from "./config";
 import { Registry } from "./registry";
