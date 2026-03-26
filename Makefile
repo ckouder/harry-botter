@@ -29,9 +29,13 @@ setup: bootstrap build
 
 ## === Development ===
 
-dev:
-	@echo "⚡ Starting orchestrator (local dev)..."
+run:
+	@echo "🚀 Starting Harry Botter (requires minikube running + .env configured)..."
+	@echo "   Event gateway: http://localhost:$${EVENT_GATEWAY_PORT:-3001}"
+	@echo "   Run 'make tunnel' in another terminal for public HTTPS URL"
 	cd orchestrator && npm run dev
+
+dev: run
 
 tunnel:
 	@echo "🌐 Starting ngrok tunnel on port $(NGROK_PORT)..."

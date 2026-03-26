@@ -1,0 +1,43 @@
+version: "3.8"
+
+# Harry Botter — One-command local dev setup
+# Usage: docker compose up
+# Requires: .env file with Slack tokens (see .env.example)
+
+services:
+  orchestrator:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.orchestrator
+    ports:
+      - "${EVENT_GATEWAY_PORT:-3001}:3001"
+    volumes:
+      - orchestrator-data:/app/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    env_file:
+      - .env
+    environment:
+      - DATABASE_PATH=/app/data/harry-botter.db
+      - K8S_NAMESPACE=harrybotter
+      - EVENT_GATEWAY_PORT=3001
+    restart: unless-stopped
+    depends_on:
+      - nanoclaw-template
+    networks:
+      - harrybotter
+
+  # Template NanoClaw image — not a running service, just pre-builds the image
+  nanoclaw-template:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.nanoclaw-base
+    image: harrybotter/nanoclaw-base:latest
+    entrypoint: ["echo", "Image built successfully"]
+    restart: "no"
+
+volumes:
+  orchestrator-data:
+
+networks:
+  harrybotter:
+    driver: bridge

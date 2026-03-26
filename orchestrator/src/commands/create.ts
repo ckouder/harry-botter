@@ -255,7 +255,7 @@ export function createHandler(
           restoreMessage,
           ``,
           `📌 *Next steps:*`,
-          `1. Install the app to your workspace (admin approval may be needed)`,
+          `1. <https://api.slack.com/apps/${appId}/install-on-team|Install the app to your workspace> (admin approval may be needed)`,
           `2. The bot will appear as *Harry Botter (${username})*`,
           `3. DM the bot to start chatting`,
         ].join("\n"),
