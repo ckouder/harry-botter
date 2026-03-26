@@ -1,5 +1,6 @@
 # NanoClaw base image for Harry Botter per-user pods
-# Source: https://github.com/qwibitai/nanoclaw
+# Uses forked NanoClaw with direct Claude Code execution (no Docker-in-Docker)
+# Source: https://github.com/ckouder/nanoclaw (branch: harry-botter/direct-runner)
 
 FROM node:22-slim AS builder
 
@@ -8,8 +9,8 @@ WORKDIR /build
 # Install git for cloning
 RUN apt-get update && apt-get install -y git && rm -rf /var/lib/apt/lists/*
 
-# Clone NanoClaw
-RUN git clone --depth 1 https://github.com/qwibitai/nanoclaw.git .
+# Clone forked NanoClaw (direct-runner branch)
+RUN git clone --depth 1 --branch harry-botter/direct-runner https://github.com/ckouder/nanoclaw.git .
 
 # Install dependencies and build
 RUN npm ci
@@ -21,20 +22,23 @@ FROM node:22-slim
 LABEL app.kubernetes.io/name="nanoclaw-base"
 LABEL app.kubernetes.io/part-of="harrybotter"
 
-# Install tini for proper signal handling + procps for health checks
+# Install tini, procps, and Claude Code CLI
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends tini procps && \
+    apt-get install -y --no-install-recommends tini procps curl && \
     rm -rf /var/lib/apt/lists/*
+
+# Install Claude Code CLI globally
+RUN npm install -g @anthropic-ai/claude-code
 
 WORKDIR /app
 
-# Copy built NanoClaw
+# Copy built NanoClaw from builder
 COPY --from=builder /build/package.json /build/package-lock.json* ./
 COPY --from=builder /build/node_modules/ ./node_modules/
 COPY --from=builder /build/dist/ ./dist/
 
 # Create workspace and support directories
-RUN mkdir -p /data /tmp/nanoclaw
+RUN mkdir -p /data /tmp/nanoclaw /app/groups /app/store /app/data
 
 # Health check server + entrypoint
 COPY docker/healthcheck-server.js /opt/nanoclaw/healthcheck-server.js
@@ -44,7 +48,7 @@ RUN chmod +x /opt/nanoclaw/entrypoint.sh
 # Create non-root user (numeric UID for K8s runAsNonRoot)
 RUN groupadd --gid 1001 nanoclaw && \
     useradd --uid 1001 --gid nanoclaw --create-home --shell /bin/bash nanoclaw && \
-    chown -R nanoclaw:nanoclaw /data /app /tmp/nanoclaw /opt/nanoclaw
+    chown -R nanoclaw:nanoclaw /data /app /tmp/nanoclaw /opt/nanoclaw /home/nanoclaw
 
 EXPOSE 3000
 
