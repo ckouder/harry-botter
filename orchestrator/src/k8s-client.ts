@@ -79,7 +79,7 @@ export class K8sClient {
           {
             name: "nanoclaw",
             image: this.nanoclawImage,
-            imagePullPolicy: "Always",
+            imagePullPolicy: "Never",
             ports: [
               {
                 name: "health",
