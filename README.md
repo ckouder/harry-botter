@@ -31,11 +31,48 @@ Slack chatbot that provisions per-user NanoClaw (OpenClaw) instances as Kubernet
 ## Quick Start
 
 ```bash
-make bootstrap    # Stand up Minikube + all infra
-make build        # Build all Docker images
-make deploy       # Deploy orchestrator to K8s
-make test         # Run integration tests
+make setup        # Bootstrap Minikube + build all Docker images
 ```
+
+Then configure your environment and start the services:
+
+```bash
+cp orchestrator/.env.example orchestrator/.env
+# Fill in Slack tokens and other secrets in orchestrator/.env
+```
+
+In one terminal:
+```bash
+make tunnel       # Start ngrok tunnel (copy the https URL to EVENT_GATEWAY_URL in .env)
+```
+
+In another terminal:
+```bash
+make dev          # Start the orchestrator (local dev mode)
+```
+
+Then use `/harrybotter create` in Slack.
+
+## Available Make Targets
+
+| Target | Description |
+|---|---|
+| `make setup` | Full local dev setup: bootstrap Minikube + build all images |
+| `make bootstrap` | Start Minikube, create namespace, build base image |
+| `make build` | Build all Docker images (orchestrator + NanoClaw) |
+| `make deploy` | Deploy orchestrator to Kubernetes via Helm |
+| `make dev` | Run orchestrator locally in dev mode |
+| `make tunnel` | Start ngrok tunnel on `NGROK_PORT` (default: 3001) |
+| `make test` | Run unit tests |
+| `make test-pod` | Run single pod integration test |
+| `make pods` | List pods in the `harrybotter` namespace |
+| `make logs` | Tail logs from the first pod |
+| `make logs-prev` | Tail previous container logs |
+| `make debug-pod` | Launch an interactive debug pod |
+| `make rebuild-nanoclaw` | Rebuild NanoClaw image without cache |
+| `make clean` | Uninstall Helm release and delete namespace |
+| `make clean-pods` | Delete all pods in the namespace |
+| `make nuke` | `clean` + delete the Minikube cluster |
 
 ## Project Structure
 
