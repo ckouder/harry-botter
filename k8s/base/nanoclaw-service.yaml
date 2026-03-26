@@ -1,0 +1,19 @@
+# nanoclaw-service.yaml — ClusterIP service for NanoClaw pod internal communication
+apiVersion: v1
+kind: Service
+metadata:
+  name: nanoclaw-test
+  namespace: harrybotter
+  labels:
+    app.kubernetes.io/name: nanoclaw
+    app.kubernetes.io/part-of: harrybotter
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: nanoclaw
+    harrybotter/user-id: "test-user"
+  ports:
+    - name: health
+      port: 3000
+      targetPort: health
+      protocol: TCP

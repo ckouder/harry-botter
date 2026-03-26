@@ -1,0 +1,40 @@
+# NanoClaw Base Image — lightweight OpenClaw runtime
+# Used as base for per-user NanoClaw pod instances
+FROM node:22-slim
+
+LABEL maintainer="harrybotter"
+LABEL app.kubernetes.io/name="nanoclaw-base"
+LABEL app.kubernetes.io/part-of="harrybotter"
+
+# Install system deps (curl for debugging, procps for pgrep in healthcheck, tini for PID 1)
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends curl procps tini && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install openclaw globally
+RUN npm install -g openclaw && \
+    npm cache clean --force
+
+# Create workspace and nanoclaw directories
+RUN mkdir -p /data /opt/nanoclaw
+
+# Copy healthcheck server and entrypoint
+COPY docker/healthcheck-server.js /opt/nanoclaw/healthcheck-server.js
+COPY docker/entrypoint.sh /opt/nanoclaw/entrypoint.sh
+RUN chmod +x /opt/nanoclaw/entrypoint.sh
+
+# Create non-root user
+RUN groupadd --gid 1001 nanoclaw && \
+    useradd --uid 1001 --gid nanoclaw --create-home --shell /bin/bash nanoclaw && \
+    chown -R nanoclaw:nanoclaw /data /opt/nanoclaw
+
+# Healthcheck via the dedicated healthcheck server (port 3000)
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+    CMD curl -sf http://localhost:3000/health || exit 1
+
+EXPOSE 3000
+
+USER nanoclaw
+WORKDIR /data
+
+ENTRYPOINT ["tini", "--", "/opt/nanoclaw/entrypoint.sh"]

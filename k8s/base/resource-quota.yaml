@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: harrybotter-quota
+  namespace: harrybotter
+  labels:
+    app.kubernetes.io/name: harrybotter
+    app.kubernetes.io/part-of: harrybotter
+spec:
+  hard:
+    pods: "500"
+    requests.cpu: "250"
+    requests.memory: 128Gi
+    limits.cpu: "500"
+    limits.memory: 256Gi
+    persistentvolumeclaims: "500"

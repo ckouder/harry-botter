@@ -1,0 +1,13 @@
+apiVersion: v2
+name: harrybotter
+description: Harry Botter — NanoClaw Runner for Slack
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - openclaw
+  - nanoclaw
+  - kubernetes
+  - slack
+maintainers:
+  - name: harrybotter-team

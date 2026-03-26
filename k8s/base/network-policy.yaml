@@ -1,0 +1,98 @@
+---
+# Default deny all ingress and egress for user pods
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: harrybotter
+  labels:
+    app.kubernetes.io/name: network-policy
+    app.kubernetes.io/part-of: harrybotter
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: nanoclaw
+  policyTypes:
+    - Ingress
+    - Egress
+---
+# Allow DNS egress (kube-dns) for nanoclaw pods
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-egress
+  namespace: harrybotter
+  labels:
+    app.kubernetes.io/name: network-policy
+    app.kubernetes.io/part-of: harrybotter
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: nanoclaw
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+---
+# Allow egress to api.anthropic.com (HTTPS)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-anthropic-egress
+  namespace: harrybotter
+  labels:
+    app.kubernetes.io/name: network-policy
+    app.kubernetes.io/part-of: harrybotter
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: nanoclaw
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - ipBlock:
+            # Allow all external IPs (Anthropic uses Cloudflare; IPs rotate)
+            # NetworkPolicy can't resolve hostnames — use CIDR ranges
+            cidr: 0.0.0.0/0
+            except:
+              # Block cluster-internal ranges (RFC 1918 + link-local)
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+      ports:
+        - protocol: TCP
+          port: 443
+---
+# Allow orchestrator to reach nanoclaw pods (health checks, management)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-orchestrator-ingress
+  namespace: harrybotter
+  labels:
+    app.kubernetes.io/name: network-policy
+    app.kubernetes.io/part-of: harrybotter
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: nanoclaw
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: orchestrator
+      ports:
+        - protocol: TCP
+          port: 4880

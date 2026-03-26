@@ -1,0 +1,75 @@
+# nanoclaw-pod-template.yaml — Pod spec for a single NanoClaw instance
+# Used as a template; NANOCLAW_USER_ID and labels are filled per-user.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nanoclaw-test
+  namespace: harrybotter
+  labels:
+    app.kubernetes.io/name: nanoclaw
+    app.kubernetes.io/part-of: harrybotter
+    app.kubernetes.io/component: nanoclaw-instance
+    harrybotter/user-id: "test-user"
+spec:
+  terminationGracePeriodSeconds: 30
+  securityContext:
+    runAsNonRoot: true
+  containers:
+    - name: nanoclaw
+      image: localhost:5000/nanoclaw-base:latest
+      imagePullPolicy: Always
+      ports:
+        - name: health
+          containerPort: 3000
+          protocol: TCP
+      env:
+        - name: ANTHROPIC_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: nanoclaw-secrets
+              key: anthropic-api-key
+        - name: NANOCLAW_USER_ID
+          value: "test-user"
+        - name: HEALTHCHECK_PORT
+          value: "3000"
+      resources:
+        requests:
+          memory: "256Mi"
+          cpu: "100m"
+        limits:
+          memory: "512Mi"
+          cpu: "500m"
+      livenessProbe:
+        httpGet:
+          path: /health
+          port: health
+        initialDelaySeconds: 10
+        periodSeconds: 15
+        timeoutSeconds: 3
+        failureThreshold: 3
+      readinessProbe:
+        httpGet:
+          path: /ready
+          port: health
+        initialDelaySeconds: 5
+        periodSeconds: 10
+        timeoutSeconds: 3
+        failureThreshold: 3
+      securityContext:
+        runAsNonRoot: true
+        readOnlyRootFilesystem: true
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop:
+            - ALL
+      volumeMounts:
+        - name: data
+          mountPath: /data
+        - name: tmp
+          mountPath: /tmp
+  volumes:
+    - name: data
+      emptyDir: {}
+    - name: tmp
+      emptyDir: {}
+  restartPolicy: Always

@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: harrybotter
+  labels:
+    app.kubernetes.io/name: harrybotter
+    app.kubernetes.io/part-of: harrybotter
+    app.kubernetes.io/managed-by: helm

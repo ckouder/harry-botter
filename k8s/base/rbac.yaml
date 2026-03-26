@@ -1,0 +1,54 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: harrybotter-orchestrator
+  namespace: harrybotter
+  labels:
+    app.kubernetes.io/name: harrybotter-orchestrator
+    app.kubernetes.io/component: orchestrator
+    app.kubernetes.io/part-of: harrybotter
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: harrybotter-orchestrator
+  namespace: harrybotter
+  labels:
+    app.kubernetes.io/name: harrybotter-orchestrator
+    app.kubernetes.io/component: orchestrator
+    app.kubernetes.io/part-of: harrybotter
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "pods/log", "pods/status"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["services"]
+    verbs: ["get", "list", "watch", "create", "delete"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: harrybotter-orchestrator
+  namespace: harrybotter
+  labels:
+    app.kubernetes.io/name: harrybotter-orchestrator
+    app.kubernetes.io/component: orchestrator
+    app.kubernetes.io/part-of: harrybotter
+subjects:
+  - kind: ServiceAccount
+    name: harrybotter-orchestrator
+    namespace: harrybotter
+roleRef:
+  kind: Role
+  name: harrybotter-orchestrator
+  apiGroup: rbac.authorization.k8s.io

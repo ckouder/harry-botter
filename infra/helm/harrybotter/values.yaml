@@ -1,0 +1,53 @@
+# Default values for harrybotter
+namespace: harrybotter
+
+# Labels applied to all resources
+labels:
+  app.kubernetes.io/part-of: harrybotter
+  app.kubernetes.io/managed-by: helm
+
+# NanoClaw base image
+nanoclaw:
+  image:
+    repository: localhost:5000/nanoclaw-base
+    tag: latest
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: "250m"
+      memory: "256Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+  healthcheck:
+    port: 4880
+    path: /health
+
+# Orchestrator
+orchestrator:
+  image:
+    repository: localhost:5000/harrybotter-orchestrator
+    tag: latest
+    pullPolicy: IfNotPresent
+  replicas: 1
+  resources:
+    requests:
+      cpu: "250m"
+      memory: "256Mi"
+    limits:
+      cpu: "1"
+      memory: "512Mi"
+
+# Resource quota for the namespace
+resourceQuota:
+  pods: "500"
+  requestsCpu: "250"
+  requestsMemory: "128Gi"
+  limitsCpu: "500"
+  limitsMemory: "256Gi"
+  pvcs: "500"
+
+# Network policy
+networkPolicy:
+  enabled: true
+  anthropicEgressPort: 443
