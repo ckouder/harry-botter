@@ -59,10 +59,17 @@ build-nanoclaw:
 
 ## === Deploy ===
 
-deploy:
+deploy: helm-adopt
 	helm upgrade --install harrybotter infra/helm/harrybotter \
 		--namespace $(NAMESPACE) \
 		--create-namespace
+
+helm-adopt:
+	@echo "🏷️  Labeling existing resources for Helm adoption..."
+	@kubectl label namespace $(NAMESPACE) app.kubernetes.io/managed-by=Helm --overwrite 2>/dev/null || true
+	@kubectl annotate namespace $(NAMESPACE) meta.helm.sh/release-name=harrybotter meta.helm.sh/release-namespace=$(NAMESPACE) --overwrite 2>/dev/null || true
+	@kubectl label resourcequota harrybotter-quota -n $(NAMESPACE) app.kubernetes.io/managed-by=Helm --overwrite 2>/dev/null || true
+	@kubectl annotate resourcequota harrybotter-quota -n $(NAMESPACE) meta.helm.sh/release-name=harrybotter meta.helm.sh/release-namespace=$(NAMESPACE) --overwrite 2>/dev/null || true
 
 ## === M1: Single Pod Test ===
 
