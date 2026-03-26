@@ -1,6 +1,6 @@
 # NanoClaw base image for Harry Botter per-user pods
 # Uses forked NanoClaw with direct Claude Code execution (no Docker-in-Docker)
-# Source: https://github.com/ckouder/nanoclaw (branch: harry-botter/direct-runner)
+# Source: https://github.com/ckouder/nanoclaw (branch: harry-botter/direct-runner-v2)
 
 FROM node:22-slim AS builder
 
@@ -10,7 +10,7 @@ WORKDIR /build
 RUN apt-get update && apt-get install -y git && rm -rf /var/lib/apt/lists/*
 
 # Clone forked NanoClaw (direct-runner branch)
-RUN git clone --depth 1 --branch harry-botter/direct-runner https://github.com/ckouder/nanoclaw.git .
+RUN git clone --depth 1 --branch harry-botter/direct-runner-v2 https://github.com/ckouder/nanoclaw.git .
 
 # Install dependencies and build
 RUN npm ci
