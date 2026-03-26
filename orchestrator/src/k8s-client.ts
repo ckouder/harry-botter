@@ -292,10 +292,23 @@ export class K8sClient {
       data: encodedData,
     };
 
-    await this.coreApi.createNamespacedSecret({
-      namespace,
-      body: secret,
-    });
+    try {
+      await this.coreApi.createNamespacedSecret({
+        namespace,
+        body: secret,
+      });
+    } catch (err: any) {
+      if (err?.response?.statusCode === 409 || err?.statusCode === 409) {
+        // Already exists — update instead
+        await this.coreApi.replaceNamespacedSecret({
+          name,
+          namespace,
+          body: secret,
+        });
+      } else {
+        throw err;
+      }
+    }
     return name;
   }
 
