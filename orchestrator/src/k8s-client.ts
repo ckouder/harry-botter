@@ -94,6 +94,7 @@ export class K8sClient {
                   secretKeyRef: {
                     name: `${name}-secret`,
                     key: "slack-bot-token",
+                    optional: true,
                   },
                 },
               },
@@ -101,8 +102,9 @@ export class K8sClient {
                 name: "ANTHROPIC_API_KEY",
                 valueFrom: {
                   secretKeyRef: {
-                    name: "nanoclaw-secrets",
-                    key: "anthropic-api-key",
+                    name: `nc-secret-${name.replace("nc-", "")}`,
+                    key: "ANTHROPIC_API_KEY",
+                    optional: true,
                   },
                 },
               },
