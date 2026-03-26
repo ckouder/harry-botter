@@ -49,32 +49,26 @@ export async function collectMetrics(
   kc.loadFromDefault();
 
   const coreApi = kc.makeApiClient(k8s.CoreV1Api);
-  const metricsClient = new k8s.Metrics(kc);
 
   // List pods with our component label
-  const { body: podList } = await coreApi.listNamespacedPod(
+  const podList = await coreApi.listNamespacedPod({
     namespace,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    "app.kubernetes.io/component=nanoclaw"
-  );
+    labelSelector: "app.kubernetes.io/component=nanoclaw",
+  });
 
   // Try to get metrics from metrics-server
   let metricsMap = new Map<string, { cpu: number; memory: number }>();
   try {
-    const topPods = await metricsClient.getNodeMetrics();
-    // Use pod metrics API directly
+    // Use pod metrics API directly via CustomObjectsApi
     const metricsApi = kc.makeApiClient(k8s.CustomObjectsApi);
-    const { body: podMetrics } = (await metricsApi.listNamespacedCustomObject(
-      "metrics.k8s.io",
-      "v1beta1",
+    const podMetrics = (await metricsApi.listNamespacedCustomObject({
+      group: "metrics.k8s.io",
+      version: "v1beta1",
       namespace,
-      "pods"
-    )) as any;
+      plural: "pods",
+    })) as any;
 
-    for (const item of podMetrics.items || []) {
+    for (const item of (podMetrics as any).items || []) {
       const name = item.metadata.name;
       let cpu = 0;
       let mem = 0;

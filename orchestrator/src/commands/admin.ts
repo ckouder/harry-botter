@@ -165,7 +165,10 @@ async function handleKill(
     const coreApi = kc.makeApiClient(k8s.CoreV1Api);
 
     try {
-      await coreApi.deleteNamespacedPod(bot.pod_name, config.k8sNamespace);
+      await coreApi.deleteNamespacedPod({
+        name: bot.pod_name,
+        namespace: config.k8sNamespace,
+      });
     } catch (err: any) {
       if (err?.statusCode !== 404) throw err;
       // Already gone, fine
