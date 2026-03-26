@@ -4,7 +4,7 @@
 set -euo pipefail
 
 # Configurable via environment
-MINIKUBE_MEMORY="${MINIKUBE_MEMORY:-8g}"
+MINIKUBE_MEMORY="${MINIKUBE_MEMORY:-6g}"
 MINIKUBE_CPUS="${MINIKUBE_CPUS:-4}"
 MINIKUBE_DRIVER="${MINIKUBE_DRIVER:-docker}"
 NAMESPACE="harrybotter"

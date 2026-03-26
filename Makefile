@@ -2,7 +2,7 @@
 SHELL := /bin/bash
 
 # Minikube config (override via env)
-MINIKUBE_MEMORY ?= 8g
+MINIKUBE_MEMORY ?= 6g
 MINIKUBE_CPUS ?= 4
 MINIKUBE_DRIVER ?= docker
 NAMESPACE := harrybotter
