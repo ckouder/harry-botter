@@ -55,10 +55,15 @@ echo "[entrypoint] Starting healthcheck server..."
 node /opt/nanoclaw/healthcheck-server.js &
 HEALTHCHECK_PID=$!
 
-# 2. Ensure data directory structure
-mkdir -p /data/nanoclaw 2>/dev/null || true
+# 2. Ensure writable directories (rootfs is read-only, /data is writable)
+mkdir -p /data/nanoclaw /data/store /data/groups /data/data 2>/dev/null || true
 
-# 3. Start NanoClaw
+# 3. Symlink NanoClaw's writable dirs from /app to /data
+ln -sfn /data/store /app/store 2>/dev/null || true
+ln -sfn /data/groups /app/groups 2>/dev/null || true
+ln -sfn /data/data /app/data 2>/dev/null || true
+
+# 4. Start NanoClaw
 echo "[entrypoint] Starting NanoClaw..."
 cd /app
 node dist/index.js &
