@@ -27,6 +27,10 @@ export interface Config {
   adminChannelId: string;
   /** Alert check interval in milliseconds (default 60000) */
   alertIntervalMs: number;
+  /** Public URL where Slack sends events (e.g. https://hb.example.com) */
+  eventGatewayUrl: string;
+  /** Port for the HTTP event gateway (default 3001) */
+  eventGatewayPort: number;
 }
 
 function required(name: string): string {
@@ -59,5 +63,7 @@ export function loadConfig(): Config {
       .filter(Boolean),
     adminChannelId: process.env.ADMIN_CHANNEL_ID || "",
     alertIntervalMs: parseInt(process.env.ALERT_INTERVAL_MS || "60000", 10),
+    eventGatewayUrl: required("EVENT_GATEWAY_URL"),
+    eventGatewayPort: parseInt(process.env.EVENT_GATEWAY_PORT || "3001", 10),
   };
 }

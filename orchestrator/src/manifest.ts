@@ -9,6 +9,10 @@ export interface ManifestOptions {
   username: string;
   /** Unique suffix for deduplication (e.g. first 8 chars of user ID hash) */
   suffix: string;
+  /** The Slack app ID (used to build the request_url) */
+  appId?: string;
+  /** Base URL for the event gateway (e.g. https://hb.example.com) */
+  eventGatewayUrl?: string;
 }
 
 export type SlackManifest = Record<string, unknown>;
@@ -53,13 +57,16 @@ export function generateManifest(opts: ManifestOptions): SlackManifest {
     },
     settings: {
       event_subscriptions: {
+        ...(opts.eventGatewayUrl && opts.appId
+          ? { request_url: `${opts.eventGatewayUrl}/slack/events/${opts.appId}` }
+          : {}),
         bot_events: ["message.im"],
       },
       interactivity: {
         is_enabled: false,
       },
       org_deploy_enabled: false,
-      socket_mode_enabled: true,
+      socket_mode_enabled: false,
       token_rotation_enabled: false,
     },
   };

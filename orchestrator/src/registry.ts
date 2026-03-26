@@ -9,6 +9,9 @@ export interface UserBot {
   app_id: string;
   bot_token: string;
   app_config_token: string;
+  signing_secret: string;
+  client_id: string;
+  client_secret: string;
   created_at: string;
   status: string; // "active" | "stopped" | "destroyed"
   retention_mode: RetentionMode;
@@ -50,13 +53,30 @@ export class Registry {
       );
     `);
 
-    // Migration: add retention_mode column if missing (existing DBs)
+    // Migrations: add columns if missing (existing DBs)
     const columns = this.db
       .prepare("PRAGMA table_info(user_bots)")
       .all() as { name: string }[];
-    if (!columns.some((c) => c.name === "retention_mode")) {
+    const colNames = new Set(columns.map((c) => c.name));
+
+    if (!colNames.has("retention_mode")) {
       this.db.exec(
         `ALTER TABLE user_bots ADD COLUMN retention_mode TEXT NOT NULL DEFAULT 'retain'`
+      );
+    }
+    if (!colNames.has("signing_secret")) {
+      this.db.exec(
+        `ALTER TABLE user_bots ADD COLUMN signing_secret TEXT NOT NULL DEFAULT ''`
+      );
+    }
+    if (!colNames.has("client_id")) {
+      this.db.exec(
+        `ALTER TABLE user_bots ADD COLUMN client_id TEXT NOT NULL DEFAULT ''`
+      );
+    }
+    if (!colNames.has("client_secret")) {
+      this.db.exec(
+        `ALTER TABLE user_bots ADD COLUMN client_secret TEXT NOT NULL DEFAULT ''`
       );
     }
   }
@@ -65,6 +85,12 @@ export class Registry {
     return this.db
       .prepare("SELECT * FROM user_bots WHERE slack_user_id = ?")
       .get(userId) as UserBot | undefined;
+  }
+
+  getByAppId(appId: string): UserBot | undefined {
+    return this.db
+      .prepare("SELECT * FROM user_bots WHERE app_id = ? AND status = 'active'")
+      .get(appId) as UserBot | undefined;
   }
 
   getActive(userId: string): UserBot | undefined {
@@ -78,8 +104,8 @@ export class Registry {
   create(bot: Omit<UserBot, "created_at">): UserBot {
     this.db
       .prepare(
-        `INSERT INTO user_bots (slack_user_id, pod_name, app_id, bot_token, app_config_token, status, retention_mode)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO user_bots (slack_user_id, pod_name, app_id, bot_token, app_config_token, signing_secret, client_id, client_secret, status, retention_mode)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         bot.slack_user_id,
@@ -87,6 +113,9 @@ export class Registry {
         bot.app_id,
         bot.bot_token,
         bot.app_config_token,
+        bot.signing_secret,
+        bot.client_id,
+        bot.client_secret,
         bot.status,
         bot.retention_mode
       );

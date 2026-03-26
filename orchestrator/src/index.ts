@@ -10,6 +10,7 @@ import { statusHandler } from "./commands/status";
 import { configRetentionHandler } from "./commands/config-retention";
 import { exportHandler } from "./commands/export";
 import { startOrphanDetector } from "./orphan-detector";
+import { startEventGateway } from "./event-gateway";
 
 async function main() {
   const config = loadConfig();
@@ -60,6 +61,10 @@ async function main() {
   await app.start();
   console.log("⚡ Harry Botter Orchestrator is running (Socket Mode)");
 
+  // Start HTTP event gateway for per-user apps
+  const gateway = startEventGateway({ config, registry });
+  console.log(`⚡ Event Gateway public URL: ${config.eventGatewayUrl}`);
+
   // Start orphan detector (every 5 minutes)
   const autoCleanup = process.env.ORPHAN_AUTO_CLEANUP === "true";
   const stopOrphanDetector = startOrphanDetector(k8sClient, registry, {
@@ -70,6 +75,7 @@ async function main() {
   // Graceful shutdown
   const shutdown = () => {
     console.log("Shutting down...");
+    gateway.close();
     stopOrphanDetector();
     registry.close();
     process.exit(0);

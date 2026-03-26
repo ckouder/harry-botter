@@ -102,11 +102,38 @@ export function createHandler(
         signing_secret: string;
       };
 
-      const pod = podNameFromUserId(userId);
+      // Update manifest with request_url now that we have the appId
+      try {
+        const updatedManifest = generateManifest({
+          username,
+          suffix: userId.slice(0, 8),
+          appId,
+          eventGatewayUrl: config.eventGatewayUrl,
+        });
+        await configClient.apiCall("apps.manifest.update", {
+          app_id: appId,
+          manifest: JSON.stringify(updatedManifest),
+        });
+        console.log(`[create] Updated manifest with request_url for app ${appId}`);
+      } catch (err) {
+        console.warn(`[create] Manifest update for request_url failed (non-fatal): ${(err as Error).message}`);
+      }
 
-      // Create K8s Secret for the user's bot token
-      // Bot token placeholder — real token comes after OAuth install
-      const botToken = ""; // Will be set via token rotation after OAuth
+      // Perform OAuth install to get bot_token
+      let botToken = "";
+      try {
+        const oauthResult = await configClient.apiCall("tooling.tokens.rotate", {
+          app_id: appId,
+        }) as any;
+        if (oauthResult.ok && oauthResult.token) {
+          botToken = oauthResult.token;
+          console.log(`[create] Obtained bot token via tooling.tokens.rotate for app ${appId}`);
+        }
+      } catch (err) {
+        console.warn(`[create] Token rotation failed (non-fatal): ${(err as Error).message}`);
+      }
+
+      const pod = podNameFromUserId(userId);
       let secretName: string;
       try {
         secretName = await k8sClient.createSecret(userId, {
@@ -210,6 +237,9 @@ export function createHandler(
         app_id: appId,
         bot_token: botToken,
         app_config_token: "",
+        signing_secret: credentials.signing_secret,
+        client_id: credentials.client_id,
+        client_secret: credentials.client_secret,
         status: "active",
         retention_mode: config.defaultRetentionMode,
       });
