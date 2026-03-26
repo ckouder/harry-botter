@@ -28,7 +28,7 @@ fi
 
 # --- 2. Enable addons (idempotent) ---
 echo "📦 Enabling addons..."
-for addon in registry metrics-server ingress; do
+for addon in metrics-server ingress; do
     if minikube addons list -o json | grep -q "\"$addon\":{\"Status\":\"enabled\""; then
         echo "   ✅ $addon already enabled"
     else

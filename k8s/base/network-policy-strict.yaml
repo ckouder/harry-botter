@@ -1,0 +1,87 @@
+---
+# ConfigMap for egress allowlist — add additional CIDR ranges here
+# Pods can only reach api.anthropic.com (via 0.0.0.0/0 minus RFC1918) + DNS
+# To add more destinations, extend the allowlist in this ConfigMap
+# and reference in application-level proxy/firewall configuration.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: egress-allowlist
+  namespace: harrybotter
+  labels:
+    app.kubernetes.io/name: egress-allowlist
+    app.kubernetes.io/part-of: harrybotter
+data:
+  # Hostnames for documentation; NetworkPolicy uses CIDR, not hostnames.
+  # Application-level enforcement (proxy) should use these.
+  allowed-hosts: |
+    api.anthropic.com
+  # Additional CIDR ranges to allow (one per line)
+  additional-cidrs: ""
+---
+# Strict: deny all pod-to-pod traffic (user pods cannot talk to each other)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: deny-inter-pod
+  namespace: harrybotter
+  labels:
+    app.kubernetes.io/name: network-policy-strict
+    app.kubernetes.io/part-of: harrybotter
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: nanoclaw
+  policyTypes:
+    - Ingress
+  ingress:
+    # Only allow ingress from orchestrator — no pod-to-pod
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: orchestrator
+      ports:
+        - protocol: TCP
+          port: 4880
+---
+# Strict egress: only DNS + HTTPS to external (api.anthropic.com)
+# Block all cluster-internal ranges except kube-dns
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: strict-egress
+  namespace: harrybotter
+  labels:
+    app.kubernetes.io/name: network-policy-strict
+    app.kubernetes.io/part-of: harrybotter
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: nanoclaw
+  policyTypes:
+    - Egress
+  egress:
+    # DNS resolution via kube-dns
+    - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # HTTPS egress to external only (Anthropic API uses Cloudflare, IPs rotate)
+    # Block all RFC1918/link-local to prevent cluster-internal access
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+              - 169.254.0.0/16
+      ports:
+        - protocol: TCP
+          port: 443

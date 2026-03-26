@@ -6,13 +6,17 @@ MINIKUBE_MEMORY ?= 6g
 MINIKUBE_CPUS ?= 4
 MINIKUBE_DRIVER ?= docker
 NAMESPACE := harrybotter
-REGISTRY := localhost:5000
+
+# Use minikube's docker env to build images directly — no registry push needed.
+# Images built inside minikube's docker daemon are immediately available to pods.
+IMAGE_NANOCLAW := harrybotter/nanoclaw-base:latest
+IMAGE_ORCHESTRATOR := harrybotter/orchestrator:latest
 
 .PHONY: bootstrap build deploy test clean
 
 ## === M0: Infrastructure Bootstrap ===
 
-bootstrap: minikube-start registry namespace base-image helm-init
+bootstrap: minikube-start namespace base-image helm-init
 	@echo "✅ Harry Botter infrastructure bootstrapped"
 
 minikube-start:
@@ -21,13 +25,8 @@ minikube-start:
 		--memory=$(MINIKUBE_MEMORY) \
 		--cpus=$(MINIKUBE_CPUS) \
 		--driver=$(MINIKUBE_DRIVER) \
-		--addons=registry,metrics-server,ingress
+		--addons=metrics-server,ingress
 	@echo "✅ Minikube running"
-
-registry:
-	@echo "📦 Verifying registry addon..."
-	minikube addons enable registry
-	@echo "✅ Registry available at $(REGISTRY)"
 
 namespace:
 	@echo "📁 Creating namespace $(NAMESPACE)..."
@@ -36,10 +35,10 @@ namespace:
 	@echo "✅ Namespace $(NAMESPACE) ready"
 
 base-image:
-	@echo "🐳 Building NanoClaw base image..."
+	@echo "🐳 Building NanoClaw base image (inside minikube docker)..."
 	eval $$(minikube docker-env) && \
-		docker build -t $(REGISTRY)/nanoclaw-base:latest -f docker/Dockerfile.nanoclaw-base .
-	@echo "✅ Base image built"
+		docker build -t $(IMAGE_NANOCLAW) -f docker/Dockerfile.nanoclaw-base .
+	@echo "✅ Base image built: $(IMAGE_NANOCLAW)"
 
 helm-init:
 	@echo "📊 Initializing Helm charts..."
@@ -52,11 +51,11 @@ build: build-orchestrator build-nanoclaw
 
 build-orchestrator:
 	eval $$(minikube docker-env) && \
-		docker build -t $(REGISTRY)/harrybotter-orchestrator:latest -f docker/Dockerfile.orchestrator orchestrator/
+		docker build -t $(IMAGE_ORCHESTRATOR) -f docker/Dockerfile.orchestrator orchestrator/
 
 build-nanoclaw:
 	eval $$(minikube docker-env) && \
-		docker build -t $(REGISTRY)/nanoclaw-base:latest -f docker/Dockerfile.nanoclaw-base .
+		docker build -t $(IMAGE_NANOCLAW) -f docker/Dockerfile.nanoclaw-base .
 
 ## === Deploy ===
 

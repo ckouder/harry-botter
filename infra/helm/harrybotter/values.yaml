@@ -9,7 +9,7 @@ labels:
 # NanoClaw base image
 nanoclaw:
   image:
-    repository: localhost:5000/nanoclaw-base
+    repository: harrybotter/nanoclaw-base
     tag: latest
     pullPolicy: IfNotPresent
   resources:
@@ -26,7 +26,7 @@ nanoclaw:
 # Orchestrator
 orchestrator:
   image:
-    repository: localhost:5000/harrybotter-orchestrator
+    repository: harrybotter/orchestrator
     tag: latest
     pullPolicy: IfNotPresent
   replicas: 1

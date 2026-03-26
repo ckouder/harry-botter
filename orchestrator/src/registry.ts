@@ -1,6 +1,7 @@
 import Database from "better-sqlite3";
 import * as path from "path";
 import * as fs from "fs";
+import type { RetentionMode } from "./config";
 
 export interface UserBot {
   slack_user_id: string;
@@ -10,6 +11,7 @@ export interface UserBot {
   app_config_token: string;
   created_at: string;
   status: string; // "active" | "stopped" | "destroyed"
+  retention_mode: RetentionMode;
 }
 
 export class Registry {
@@ -36,7 +38,8 @@ export class Registry {
         bot_token TEXT NOT NULL DEFAULT '',
         app_config_token TEXT NOT NULL DEFAULT '',
         created_at TEXT NOT NULL DEFAULT (datetime('now')),
-        status TEXT NOT NULL DEFAULT 'active'
+        status TEXT NOT NULL DEFAULT 'active',
+        retention_mode TEXT NOT NULL DEFAULT 'retain'
       );
 
       CREATE TABLE IF NOT EXISTS token_rotations (
@@ -46,6 +49,16 @@ export class Registry {
         reason TEXT
       );
     `);
+
+    // Migration: add retention_mode column if missing (existing DBs)
+    const columns = this.db
+      .prepare("PRAGMA table_info(user_bots)")
+      .all() as { name: string }[];
+    if (!columns.some((c) => c.name === "retention_mode")) {
+      this.db.exec(
+        `ALTER TABLE user_bots ADD COLUMN retention_mode TEXT NOT NULL DEFAULT 'retain'`
+      );
+    }
   }
 
   get(userId: string): UserBot | undefined {
@@ -99,6 +112,21 @@ export class Registry {
         .run(userId, reason || "manual rotation");
     });
     update();
+  }
+
+  getRetentionMode(userId: string): RetentionMode | undefined {
+    const row = this.db
+      .prepare("SELECT retention_mode FROM user_bots WHERE slack_user_id = ?")
+      .get(userId) as { retention_mode: RetentionMode } | undefined;
+    return row?.retention_mode;
+  }
+
+  updateRetentionMode(userId: string, mode: RetentionMode): void {
+    this.db
+      .prepare(
+        "UPDATE user_bots SET retention_mode = ? WHERE slack_user_id = ?"
+      )
+      .run(mode, userId);
   }
 
   delete(userId: string): boolean {

@@ -16,8 +16,8 @@ spec:
     runAsNonRoot: true
   containers:
     - name: nanoclaw
-      image: localhost:5000/nanoclaw-base:latest
-      imagePullPolicy: Always
+      image: harrybotter/nanoclaw-base:latest
+      imagePullPolicy: IfNotPresent
       ports:
         - name: health
           containerPort: 3000
