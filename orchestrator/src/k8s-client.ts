@@ -137,6 +137,7 @@ export class K8sClient {
             },
             securityContext: {
               runAsNonRoot: true,
+              runAsUser: 1001,
               readOnlyRootFilesystem: true,
               allowPrivilegeEscalation: false,
               capabilities: { drop: ["ALL"] },
