@@ -43,15 +43,17 @@ export class K8sClient {
 
   constructor(config: Config) {
     const kc = new k8s.KubeConfig();
-    try {
+    if (process.env.KUBERNETES_SERVICE_HOST) {
       kc.loadFromCluster();
-    } catch {
+      console.log("[k8s] Loaded in-cluster config");
+    } else {
       kc.loadFromDefault();
+      console.log(`[k8s] Loaded kubeconfig (context: ${kc.getCurrentContext()})`);
     }
     this.coreApi = kc.makeApiClient(k8s.CoreV1Api);
     this.defaultNamespace = config.k8sNamespace;
     this.nanoclawImage =
-      process.env.NANOCLAW_IMAGE || "localhost:5000/nanoclaw-base:latest";
+      process.env.NANOCLAW_IMAGE || "harrybotter/nanoclaw-base:latest";
   }
 
   private ns(namespace?: string): string {
