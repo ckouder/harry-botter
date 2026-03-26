@@ -65,6 +65,16 @@ deploy:
 		--namespace $(NAMESPACE) \
 		--create-namespace
 
+## === M1: Single Pod Test ===
+
+test-pod:
+	@echo "🧪 Running M1 single pod test..."
+	./scripts/deploy-test-pod.sh
+
+test-pod-keep:
+	@echo "🧪 Running M1 single pod test (no cleanup)..."
+	./scripts/deploy-test-pod.sh --no-cleanup
+
 ## === Test ===
 
 test:
