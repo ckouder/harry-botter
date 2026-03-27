@@ -12,12 +12,12 @@
 
 import * as crypto from "crypto";
 
-// From Claude Code source (cli.js) — these are the actual production values
+// Actual production values from a working Claude Code OAuth flow
 const CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
-const AUTHORIZE_URL = "https://claude.ai/oauth/authorize";
+const AUTHORIZE_URL = "https://claude.com/cai/oauth/authorize";
 const TOKEN_URL = "https://platform.claude.com/v1/oauth/token";
 const REDIRECT_URI = "https://platform.claude.com/oauth/code/callback";
-const SCOPES = "user:profile user:inference user:sessions:claude_code user:mcp_servers";
+const SCOPES = "org:create_api_key user:profile user:inference user:sessions:claude_code user:mcp_servers user:file_upload";
 
 export interface OAuthSession {
   verifier: string;
@@ -48,8 +48,9 @@ export function startOAuthSession(): OAuthSession {
   // Random state for CSRF protection
   const state = crypto.randomBytes(16).toString("base64url");
 
-  // Build authorize URL — matches Claude Code's actual OAuth flow
+  // Build authorize URL — matches actual working Claude Code OAuth flow
   const params = new URLSearchParams();
+  params.append("code", "true");
   params.append("client_id", CLIENT_ID);
   params.append("response_type", "code");
   params.append("redirect_uri", REDIRECT_URI);
