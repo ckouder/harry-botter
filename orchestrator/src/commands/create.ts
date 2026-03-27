@@ -104,6 +104,7 @@ export function createHandler(
         status: "pending_install",
         retention_mode: config.defaultRetentionMode,
         channel_id: "",
+        bot_name: username,
       });
 
       console.log(

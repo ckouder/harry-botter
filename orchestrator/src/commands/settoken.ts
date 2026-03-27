@@ -27,7 +27,6 @@ export function settokenHandler(
     await ack();
 
     const userId = command.user_id;
-    const username = command.user_name;
     const tokenText = (command.text || "")
       .replace(/^settoken\s*/i, "")
       .trim();
@@ -63,6 +62,8 @@ export function settokenHandler(
       });
       return;
     }
+
+    const username = userBot.bot_name || command.user_name;
 
     // Validate the token
     let botUserId = "";

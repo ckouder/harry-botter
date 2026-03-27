@@ -13,9 +13,10 @@ export interface UserBot {
   client_id: string;
   client_secret: string;
   created_at: string;
-  status: string; // "active" | "stopped" | "destroyed"
+  status: string; // "active" | "pending_install" | "stopped" | "destroyed"
   retention_mode: RetentionMode;
   channel_id: string;
+  bot_name: string;
 }
 
 export class Registry {
@@ -91,6 +92,11 @@ export class Registry {
         `ALTER TABLE user_bots ADD COLUMN channel_id TEXT NOT NULL DEFAULT ''`
       );
     }
+    if (!colNames.has("bot_name")) {
+      this.db.exec(
+        `ALTER TABLE user_bots ADD COLUMN bot_name TEXT NOT NULL DEFAULT ''`
+      );
+    }
   }
 
   get(userId: string): UserBot | undefined {
@@ -116,8 +122,8 @@ export class Registry {
   create(bot: Omit<UserBot, "created_at">): UserBot {
     this.db
       .prepare(
-        `INSERT INTO user_bots (slack_user_id, pod_name, app_id, bot_token, app_config_token, signing_secret, client_id, client_secret, status, retention_mode, channel_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO user_bots (slack_user_id, pod_name, app_id, bot_token, app_config_token, signing_secret, client_id, client_secret, status, retention_mode, channel_id, bot_name)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         bot.slack_user_id,
@@ -130,7 +136,8 @@ export class Registry {
         bot.client_secret,
         bot.status,
         bot.retention_mode,
-        bot.channel_id || ""
+        bot.channel_id || "",
+        bot.bot_name || ""
       );
 
     return this.get(bot.slack_user_id)!;
