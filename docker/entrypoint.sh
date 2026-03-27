@@ -39,9 +39,12 @@ echo "[entrypoint] Starting NanoClaw pod"
 echo "[entrypoint] User ID: ${NANOCLAW_USER_ID:-unknown}"
 
 # 1. Set up writable working directory
-mkdir -p /data/store /data/groups /data/data 2>/dev/null || true
+mkdir -p /data/store /data/groups /data/data /data/.claude 2>/dev/null || true
 
-# 2. Start NanoClaw (it has its own HTTP health endpoint on port 4000)
+# 2. Symlink Claude Code config to persistent volume
+ln -sfn /data/.claude /home/nanoclaw/.claude 2>/dev/null || true
+
+# 3. Start NanoClaw (it has its own HTTP health endpoint on port 4000)
 echo "[entrypoint] Starting NanoClaw..."
 cd /data
 HTTP_WEBHOOK_ENABLED=true exec node /app/dist/index.js
