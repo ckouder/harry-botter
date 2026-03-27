@@ -44,7 +44,13 @@ mkdir -p /data/store /data/groups /data/data /data/.claude 2>/dev/null || true
 # 2. Symlink Claude Code config to persistent volume
 ln -sfn /data/.claude /home/nanoclaw/.claude 2>/dev/null || true
 
-# 3. Start NanoClaw (it has its own HTTP health endpoint on port 4000)
+# 3. Load Claude OAuth token if available
+if [ -f /data/.claude/oauth_token ]; then
+  export CLAUDE_CODE_OAUTH_TOKEN="$(cat /data/.claude/oauth_token)"
+  echo "[entrypoint] Loaded Claude OAuth token from /data/.claude/oauth_token"
+fi
+
+# 4. Start NanoClaw (it has its own HTTP health endpoint on port 4000)
 echo "[entrypoint] Starting NanoClaw..."
 cd /data
 HTTP_WEBHOOK_ENABLED=true exec node /app/dist/index.js

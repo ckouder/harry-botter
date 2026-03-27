@@ -29,25 +29,20 @@ export function authHandler(config: Config, registry: Registry) {
     }
 
     if (!tokenText) {
-      // No token provided — show instructions
       await respond({
         response_type: "ephemeral",
         text: [
-          "🔐 *Authenticate Claude Code in your bot's pod*",
+          "🔐 *Authenticate Claude Code in your bot*",
           "",
-          "Option A — *Setup token* (easiest if you have Claude Code locally):",
-          "1. On your local machine, run: `claude setup-token`",
-          "2. Copy the token it outputs",
-          "3. Run: `/harrybotter auth <token>`",
+          "*Step 1:* Run this in your pod:",
+          `\`kubectl exec -it -n ${config.k8sNamespace} ${userBot.pod_name} -- claude setup-token\``,
           "",
-          "Option B — *OAuth URL* (if you don't have Claude Code locally):",
-          "1. Run: `/harrybotter auth url`",
-          "2. Click the URL, authenticate in browser",
-          "3. Copy the code from the callback",
-          "4. Run: `/harrybotter auth <code>`",
+          "*Step 2:* Complete the OAuth flow in your browser",
           "",
-          "Option C — *API key* (uses Anthropic API billing, not Pro/Max):",
-          "1. Run: `/harrybotter setkey sk-ant-your-api-key`",
+          "*Step 3:* Copy the token (`sk-ant-oat01-...`) and run:",
+          "`/harrybotter auth sk-ant-oat01-your-token`",
+          "",
+          "Or if you already have the token from another machine, just paste it directly.",
         ].join("\n"),
       });
       return;
@@ -62,47 +57,47 @@ export function authHandler(config: Config, registry: Registry) {
     });
 
     try {
-      // Write the token/credentials into the pod
-      // Try claude setup-token first (works with setup tokens)
-      try {
-        execSync(
-          `kubectl exec -n ${ns} ${podName} -- sh -c 'mkdir -p /data/.claude && ln -sfn /data/.claude /home/nanoclaw/.claude 2>/dev/null; claude setup-token "${tokenText.replace(/"/g, '\\"')}"'`,
-          { timeout: 30_000, stdio: ["pipe", "pipe", "pipe"] }
-        );
-        console.log(`[auth] Setup token applied for ${userId} in ${podName}`);
-      } catch (setupErr) {
-        // If setup-token fails, try writing it as ANTHROPIC_API_KEY
-        // (for users pasting an API key instead of a setup token)
-        if (tokenText.startsWith("sk-ant-")) {
-          execSync(
-            `kubectl exec -n ${ns} ${podName} -- sh -c 'mkdir -p /data/.claude && echo "{\\"apiKey\\":\\"${tokenText.replace(/"/g, '\\"')}\\"}" > /data/.claude/.credentials.json && ln -sfn /data/.claude /home/nanoclaw/.claude 2>/dev/null'`,
-            { timeout: 15_000, stdio: ["pipe", "pipe", "pipe"] }
-          );
-          console.log(`[auth] API key written for ${userId} in ${podName}`);
-        } else {
-          throw setupErr;
-        }
-      }
+      // Write the OAuth token to the pod's persistent volume
+      // NanoClaw/Claude Code will pick it up via CLAUDE_CODE_OAUTH_TOKEN env var
+      // We write it to a file that the entrypoint sources
+      execSync(
+        `kubectl exec -n ${ns} ${podName} -- sh -c 'mkdir -p /data/.claude && echo "${tokenText.replace(/"/g, '\\"')}" > /data/.claude/oauth_token'`,
+        { timeout: 15_000, stdio: ["pipe", "pipe", "pipe"] }
+      );
+      console.log(`[auth] OAuth token written to pod ${podName}`);
 
-      // Verify claude works
-      try {
-        const result = execSync(
-          `kubectl exec -n ${ns} ${podName} -- claude -p "Say OK" --output-format text`,
-          { timeout: 60_000, encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] }
-        );
-        console.log(`[auth] Verification: ${result.trim().slice(0, 100)}`);
-      } catch (verifyErr) {
-        console.warn(`[auth] Verification failed (non-fatal): ${(verifyErr as Error).message}`);
-      }
-
+      // Verify claude works with the token
       await respond({
         response_type: "ephemeral",
-        text: [
-          "✅ Claude authenticated in your pod!",
-          "",
-          "Your bot is now fully operational. Try messaging it!",
-        ].join("\n"),
+        text: "⏳ Token saved. Verifying Claude access...",
       });
+
+      try {
+        const result = execSync(
+          `kubectl exec -n ${ns} ${podName} -- sh -c 'CLAUDE_CODE_OAUTH_TOKEN=$(cat /data/.claude/oauth_token) claude -p "Say OK" --output-format text'`,
+          { timeout: 120_000, encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] }
+        );
+        console.log(`[auth] Verification: ${result.trim().slice(0, 100)}`);
+
+        await respond({
+          response_type: "ephemeral",
+          text: [
+            "✅ Claude authenticated in your pod!",
+            "",
+            "Your bot is now fully operational. Try messaging it!",
+          ].join("\n"),
+        });
+      } catch (verifyErr) {
+        console.warn(`[auth] Verification failed: ${(verifyErr as Error).message}`);
+        await respond({
+          response_type: "ephemeral",
+          text: [
+            "⚠️ Token saved but verification failed.",
+            "The token may still work — try messaging your bot.",
+            `Error: ${(verifyErr as Error).message.slice(0, 200)}`,
+          ].join("\n"),
+        });
+      }
     } catch (err) {
       console.error(`[auth] Failed for ${userId}:`, (err as Error).message);
       await respond({
