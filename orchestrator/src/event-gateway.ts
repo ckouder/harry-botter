@@ -83,9 +83,9 @@ async function forwardToPod(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         text: event.text || "",
-        user: event.user,
-        channel: event.channel,
-        ts: event.ts,
+        chatJid: `http:${event.channel}`,
+        senderName: event.user || "unknown",
+        senderId: event.user || "unknown",
       }),
       signal: AbortSignal.timeout(30_000),
     });
