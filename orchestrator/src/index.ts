@@ -9,6 +9,7 @@ import { destroyHandler } from "./commands/destroy";
 import { statusHandler } from "./commands/status";
 import { configRetentionHandler } from "./commands/config-retention";
 import { exportHandler } from "./commands/export";
+import { joinHandler } from "./commands/join";
 import { startOrphanDetector } from "./orphan-detector";
 import { startEventGateway } from "./event-gateway";
 
@@ -41,6 +42,8 @@ async function main() {
         return configRetentionHandler(config, registry)(args);
       case "export":
         return exportHandler(config, registry)(args);
+      case "join":
+        return joinHandler(config, registry)(args);
       default:
         await args.ack();
         await args.respond({
@@ -51,6 +54,7 @@ async function main() {
             `\`/harrybotter create\` — Create your personal bot instance`,
             `\`/harrybotter destroy\` — Destroy your bot instance`,
             `\`/harrybotter status\` — Check your bot's status`,
+            `\`/harrybotter join #channel\` — Add your bot to a channel`,
             `\`/harrybotter export\` — Export your data (manual backup)`,
             `\`/harrybotter config retention retain|delete\` — Set data retention mode`,
           ].join("\n"),

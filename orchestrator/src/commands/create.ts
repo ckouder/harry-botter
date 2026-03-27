@@ -230,6 +230,67 @@ export function createHandler(
         }
       }
 
+      // Auto-create private Slack channel for the user
+      let autoChannelId = "";
+      let channelMessage = "";
+      try {
+        const channelName = `hb-${username}`.toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 80);
+        const masterClient = new WebClient(config.slackBotToken);
+
+        const createChannelResult = await masterClient.conversations.create({
+          name: channelName,
+          is_private: true,
+        });
+
+        if (createChannelResult.ok && createChannelResult.channel?.id) {
+          autoChannelId = createChannelResult.channel.id;
+
+          // Invite the user to the channel
+          try {
+            await masterClient.conversations.invite({
+              channel: autoChannelId,
+              users: userId,
+            });
+          } catch (inviteErr: any) {
+            // already_in_channel is fine
+            if (inviteErr?.data?.error !== "already_in_channel") {
+              console.warn(`[create] Failed to invite user to channel: ${(inviteErr as Error).message}`);
+            }
+          }
+
+          // Register the channel with the NanoClaw pod
+          const svcHost = `${pod}-svc.${config.k8sNamespace}.svc.cluster.local`;
+          try {
+            const regResp = await fetch(`http://${svcHost}:4000/register-group`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                jid: `http:${autoChannelId}`,
+                name: channelName,
+                folder: "slack_main",
+                isMain: true,
+              }),
+              signal: AbortSignal.timeout(10_000),
+            });
+            if (!regResp.ok) {
+              console.warn(`[create] register-group responded ${regResp.status}`);
+            }
+          } catch (regErr) {
+            console.warn(`[create] register-group failed (non-fatal): ${(regErr as Error).message}`);
+          }
+
+          channelMessage = `\n💬 Your channel: <#${autoChannelId}>`;
+          console.log(`[create] Created channel ${channelName} (${autoChannelId}) for ${userId}`);
+        }
+      } catch (chanErr: any) {
+        // name_taken means channel already exists — try to find it
+        if (chanErr?.data?.error === "name_taken") {
+          console.warn(`[create] Channel hb-${username} already exists, skipping auto-create`);
+        } else {
+          console.warn(`[create] Channel creation failed (non-fatal): ${(chanErr as Error).message}`);
+        }
+      }
+
       // Store in registry
       registry.create({
         slack_user_id: userId,
@@ -242,6 +303,7 @@ export function createHandler(
         client_secret: credentials.client_secret,
         status: "active",
         retention_mode: config.defaultRetentionMode,
+        channel_id: autoChannelId,
       });
 
       await respond({
@@ -253,11 +315,12 @@ export function createHandler(
           `• Pod: \`${pod}\` — ✅ Ready`,
           `• Status: \`active\``,
           restoreMessage,
+          channelMessage,
           ``,
           `📌 *Next steps:*`,
           `1. <https://api.slack.com/apps/${appId}/install-on-team|Install the app to your workspace> (admin approval may be needed)`,
           `2. The bot will appear as *Harry Botter (${username})*`,
-          `3. DM the bot to start chatting`,
+          `3. DM the bot or chat in ${autoChannelId ? `<#${autoChannelId}>` : "your channel"} to start`,
         ].join("\n"),
       });
 

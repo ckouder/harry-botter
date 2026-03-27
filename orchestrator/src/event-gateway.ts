@@ -222,8 +222,31 @@ export function startEventGateway(opts: EventGatewayOptions): {
         return;
       }
 
+      // Determine if this is a DM or a channel/group message
+      const channelType = (event as any).channel_type as string | undefined;
+      const isDm = channelType === "im";
+
+      // For channel/group messages, only forward if the bot is mentioned
+      if (!isDm && event.text) {
+        // Bot user ID is embedded in mentions as <@U...>
+        // We need to check if the per-user bot is mentioned
+        // The bot_token can be used to look up the bot user ID, but for
+        // efficiency we check for any bot mention pattern and let the pod decide.
+        // Alternatively, check for "Harry Botter" text mention or <@BOT_USER_ID>
+        const text = event.text.toLowerCase();
+        const hasMention = text.includes("harry botter") || text.includes("@harry botter");
+        const hasAtMention = /<@[A-Z0-9]+>/.test(event.text || "");
+
+        if (!hasMention && !hasAtMention) {
+          console.log(
+            `[event-gateway] Skipping channel message without mention in channel=${event.channel}`
+          );
+          return;
+        }
+      }
+
       console.log(
-        `[event-gateway] Processing message from user=${event.user} channel=${event.channel} pod=${userBot.pod_name}`
+        `[event-gateway] Processing message from user=${event.user} channel=${event.channel} type=${channelType || "unknown"} pod=${userBot.pod_name}`
       );
 
       // Forward to pod

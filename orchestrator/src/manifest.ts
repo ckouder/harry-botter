@@ -52,6 +52,13 @@ export function generateManifest(opts: ManifestOptions): SlackManifest {
           "im:history",
           "im:read",
           "im:write",
+          "channels:history",
+          "channels:read",
+          "channels:join",
+          "channels:manage",
+          "groups:history",
+          "groups:read",
+          "groups:write",
         ],
       },
     },
@@ -63,7 +70,7 @@ export function generateManifest(opts: ManifestOptions): SlackManifest {
         ? {
             event_subscriptions: {
               request_url: `${opts.eventGatewayUrl}/slack/events/${opts.appId}`,
-              bot_events: ["message.im"],
+              bot_events: ["message.im", "message.channels", "message.groups"],
             },
           }
         : {}),
