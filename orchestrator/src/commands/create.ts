@@ -329,9 +329,10 @@ export function createHandler(
           channelMessage,
           ``,
           `📌 *Next steps:*`,
-          `1. <https://api.slack.com/apps/${appId}/install-on-team|Install the app to your workspace> (admin approval may be needed)`,
-          `2. The bot will appear as *Harry Botter (${username})*`,
-          `3. DM the bot or chat in ${autoChannelId ? `<#${autoChannelId}>` : "your channel"} to start`,
+          `1. <https://api.slack.com/apps/${appId}/install-on-team|Install the app to your workspace>`,
+          `2. Go to <https://api.slack.com/apps/${appId}/oauth|OAuth & Permissions> → copy the *Bot User OAuth Token*`,
+          `3. Run \`/harrybotter settoken xoxb-your-token-here\``,
+          `4. DM *Harry Botter (${username})* or chat in ${autoChannelId ? `<#${autoChannelId}>` : "your channel"} to start`,
         ].join("\n"),
       });
 
