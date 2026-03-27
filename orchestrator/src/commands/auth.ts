@@ -2,7 +2,7 @@ import type {
   AllMiddlewareArgs,
   SlackCommandMiddlewareArgs,
 } from "@slack/bolt";
-import { execSync } from "child_process";
+import { execSync, spawn } from "child_process";
 import type { Registry } from "../registry";
 import type { Config } from "../config";
 
@@ -37,46 +37,70 @@ export function authHandler(config: Config, registry: Registry) {
       });
 
       try {
-        // Run claude setup-token in the pod and capture output
-        const output = execSync(
-          `kubectl exec -n ${ns} ${podName} -- sh -c 'mkdir -p /data/.claude && ln -sfn /data/.claude /home/nanoclaw/.claude 2>/dev/null; claude setup-token 2>&1 || true'`,
-          { timeout: 30_000, encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] }
+        // Ensure .claude dir exists
+        execSync(
+          `kubectl exec -n ${ns} ${podName} -- sh -c 'mkdir -p /data/.claude && ln -sfn /data/.claude /home/nanoclaw/.claude 2>/dev/null'`,
+          { timeout: 10_000, stdio: ["pipe", "pipe", "pipe"] }
         );
 
-        console.log(`[auth] setup-token output: ${output.slice(0, 500)}`);
+        // Spawn claude setup-token — it prints a URL then waits.
+        // We capture the URL and kill the process (user completes OAuth in browser).
+        const url = await new Promise<string>((resolve, reject) => {
+          const proc = spawn("kubectl", [
+            "exec", "-n", ns, podName, "--",
+            "claude", "setup-token",
+          ], { stdio: ["pipe", "pipe", "pipe"] });
 
-        // Extract URL from output (look for https:// URLs)
-        const urlMatch = output.match(/https:\/\/[^\s"']+/);
-        
-        if (urlMatch) {
-          await respond({
-            response_type: "ephemeral",
-            text: [
-              "🔐 *Claude Authentication*",
-              "",
-              `1. Click this link to authenticate: ${urlMatch[0]}`,
-              "",
-              "2. Complete the login in your browser",
-              "",
-              "3. Copy the token (starts with `sk-ant-oat01-...`) and run:",
-              "   `/harrybotter auth sk-ant-oat01-your-token-here`",
-            ].join("\n"),
+          let output = "";
+          const timeout = setTimeout(() => {
+            proc.kill();
+            reject(new Error("Timed out waiting for OAuth URL"));
+          }, 60_000);
+
+          const checkForUrl = (data: Buffer) => {
+            output += data.toString();
+            console.log(`[auth] stdout chunk: ${data.toString().trim()}`);
+            const urlMatch = output.match(/https:\/\/[^\s"'\]]+/);
+            if (urlMatch) {
+              clearTimeout(timeout);
+              proc.kill(); // Got the URL, don't need the process anymore
+              resolve(urlMatch[0]);
+            }
+          };
+
+          proc.stdout?.on("data", checkForUrl);
+          proc.stderr?.on("data", checkForUrl);
+
+          proc.on("error", (err) => {
+            clearTimeout(timeout);
+            reject(err);
           });
-        } else {
-          // No URL found — show raw output for debugging
-          await respond({
-            response_type: "ephemeral",
-            text: [
-              "🔐 *Claude setup-token output:*",
-              "```",
-              output.slice(0, 2000),
-              "```",
-              "",
-              "If you see a token (`sk-ant-oat01-...`), run:",
-              "`/harrybotter auth <your-token>`",
-            ].join("\n"),
+
+          proc.on("exit", (code) => {
+            clearTimeout(timeout);
+            // If process exits before we find a URL, check output
+            const urlMatch = output.match(/https:\/\/[^\s"'\]]+/);
+            if (urlMatch) {
+              resolve(urlMatch[0]);
+            } else {
+              reject(new Error(`setup-token exited (code ${code}) without URL. Output: ${output.slice(0, 500)}`));
+            }
           });
-        }
+        });
+
+        await respond({
+          response_type: "ephemeral",
+          text: [
+            "🔐 *Claude Authentication*",
+            "",
+            `1. Click to authenticate: ${url}`,
+            "",
+            "2. Complete the login in your browser",
+            "",
+            "3. Copy the token (starts with `sk-ant-oat01-...`) and run:",
+            "   `/harrybotter auth sk-ant-oat01-your-token-here`",
+          ].join("\n"),
+        });
       } catch (err) {
         console.error(`[auth] setup-token failed:`, (err as Error).message);
         await respond({
