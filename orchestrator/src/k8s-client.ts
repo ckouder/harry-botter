@@ -113,6 +113,14 @@ export class K8sClient {
                 value: userId,
               },
               {
+                name: "ASSISTANT_NAME",
+                value: "Harry Botter",
+              },
+              {
+                name: "HTTP_WEBHOOK_ENABLED",
+                value: "true",
+              },
+              {
                 name: "HEALTHCHECK_PORT",
                 value: "4000",
               },
