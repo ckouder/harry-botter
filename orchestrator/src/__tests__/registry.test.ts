@@ -29,6 +29,11 @@ describe("Registry", () => {
       app_config_token: "xoxe-test",
       status: "active",
       retention_mode: "retain",
+      signing_secret: "ss",
+      client_id: "ci",
+      client_secret: "cs",
+      channel_id: "",
+      bot_name: "test-bot",
     });
 
     expect(bot.slack_user_id).toBe("U12345");
@@ -49,6 +54,11 @@ describe("Registry", () => {
       app_config_token: "xoxe-test",
       status: "active",
       retention_mode: "retain",
+      signing_secret: "ss",
+      client_id: "ci",
+      client_secret: "cs",
+      channel_id: "",
+      bot_name: "test-bot",
     });
 
     expect(() =>
@@ -60,6 +70,11 @@ describe("Registry", () => {
         app_config_token: "xoxe-test2",
         status: "active",
       retention_mode: "retain",
+      signing_secret: "ss",
+      client_id: "ci",
+      client_secret: "cs",
+      channel_id: "",
+      bot_name: "test-bot",
       })
     ).toThrow();
   });
@@ -78,6 +93,11 @@ describe("Registry", () => {
       app_config_token: "xoxe-test",
       status: "active",
       retention_mode: "retain",
+      signing_secret: "ss",
+      client_id: "ci",
+      client_secret: "cs",
+      channel_id: "",
+      bot_name: "test-bot",
     });
 
     registry.updateStatus("U12345", "destroyed");
@@ -94,6 +114,11 @@ describe("Registry", () => {
       app_config_token: "c1",
       status: "active",
       retention_mode: "retain",
+      signing_secret: "ss",
+      client_id: "ci",
+      client_secret: "cs",
+      channel_id: "",
+      bot_name: "test-bot",
     });
     registry.create({
       slack_user_id: "U2",
@@ -103,6 +128,11 @@ describe("Registry", () => {
       app_config_token: "c2",
       status: "active",
       retention_mode: "retain",
+      signing_secret: "ss",
+      client_id: "ci",
+      client_secret: "cs",
+      channel_id: "",
+      bot_name: "test-bot",
     });
 
     const all = registry.listActive();
@@ -119,6 +149,11 @@ describe("Registry", () => {
       app_config_token: "c1",
       status: "active",
       retention_mode: "retain",
+      signing_secret: "ss",
+      client_id: "ci",
+      client_secret: "cs",
+      channel_id: "",
+      bot_name: "test-bot",
     });
     expect(registry.count()).toBe(1);
   });
@@ -132,6 +167,11 @@ describe("Registry", () => {
       app_config_token: "c1",
       status: "active",
       retention_mode: "retain",
+      signing_secret: "ss",
+      client_id: "ci",
+      client_secret: "cs",
+      channel_id: "",
+      bot_name: "test-bot",
     });
     const deleted = registry.delete("U1");
     expect(deleted).toBe(true);
@@ -147,6 +187,11 @@ describe("Registry", () => {
       app_config_token: "c1",
       status: "active",
       retention_mode: "retain",
+      signing_secret: "ss",
+      client_id: "ci",
+      client_secret: "cs",
+      channel_id: "",
+      bot_name: "test-bot",
     });
 
     // Default should be undefined or a default value
