@@ -59,7 +59,8 @@ export function startOAuthSession(): OAuthSession {
   params.append("code_challenge_method", "S256");
   params.append("state", state);
 
-  const authorizeUrl = `${AUTHORIZE_URL}?${params.toString()}`;
+  // URLSearchParams encodes spaces as '+', but Claude's OAuth requires '%20'
+  const authorizeUrl = `${AUTHORIZE_URL}?${params.toString().replace(/\+/g, "%20")}`;
 
   console.log(`[claude-oauth] Generated authorize URL: ${authorizeUrl}`);
 
