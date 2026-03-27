@@ -184,13 +184,32 @@ export function settokenHandler(
         if (createChannelResult.ok && createChannelResult.channel?.id) {
           channelId = createChannelResult.channel.id;
 
-          // Invite user
+          // Invite user to the channel
           try {
             await masterClient.conversations.invite({
               channel: channelId,
               users: userId,
             });
           } catch {}
+
+          // Invite the per-user bot to the channel using its own token
+          try {
+            const userBotClient = new WebClient(tokenText);
+            // Bot needs to join the channel — use conversations.join if public,
+            // or the master bot invites it if private
+            try {
+              await userBotClient.conversations.join({ channel: channelId });
+            } catch {
+              // Private channel — master bot invites the per-user bot
+              await masterClient.conversations.invite({
+                channel: channelId,
+                users: botUserId,
+              });
+            }
+            console.log(`[settoken] Invited per-user bot ${botUserId} to channel ${channelId}`);
+          } catch (botInviteErr) {
+            console.warn(`[settoken] Bot invite to channel: ${(botInviteErr as Error).message}`);
+          }
 
           // Register with NanoClaw pod
           try {
