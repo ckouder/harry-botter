@@ -5,8 +5,14 @@ import type {
 import { WebClient } from "@slack/web-api";
 import type { Registry } from "../registry";
 import type { Config } from "../config";
-import type { K8sClient } from "../k8s-client";
+import { K8sClient, podNameFromUserId } from "../k8s-client";
 import { generateManifest } from "../manifest";
+import { importPodData, getLatestBackup } from "../data-manager";
+import * as crypto from "crypto";
+
+function userHash(userId: string): string {
+  return crypto.createHash("sha256").update(userId).digest("hex").slice(0, 8);
+}
 
 export function settokenHandler(
   config: Config,
@@ -21,6 +27,7 @@ export function settokenHandler(
     await ack();
 
     const userId = command.user_id;
+    const username = command.user_name;
     const tokenText = (command.text || "")
       .replace(/^settoken\s*/i, "")
       .trim();
@@ -48,28 +55,26 @@ export function settokenHandler(
       return;
     }
 
-    const userBot = registry.getActive(userId);
+    const userBot = registry.get(userId);
     if (!userBot) {
       await respond({
         response_type: "ephemeral",
-        text: "❌ No active Harry Botter instance found. Run `/harrybotter create` first.",
+        text: "❌ No Harry Botter app found. Run `/harrybotter create` first.",
       });
       return;
     }
 
-    // Validate the token by calling auth.test
+    // Validate the token
+    let botUserId = "";
     try {
       const client = new WebClient(tokenText);
       const authResult = await client.auth.test();
       if (!authResult.ok) {
-        await respond({
-          response_type: "ephemeral",
-          text: "❌ Token validation failed. Make sure you copied the correct Bot User OAuth Token.",
-        });
-        return;
+        throw new Error("auth.test failed");
       }
+      botUserId = authResult.user_id as string;
       console.log(
-        `[settoken] Token validated for ${userId}: bot_user_id=${authResult.user_id}, team=${authResult.team}`
+        `[settoken] Token validated: bot_user_id=${botUserId}, team=${authResult.team}`
       );
     } catch (err) {
       await respond({
@@ -79,60 +84,175 @@ export function settokenHandler(
       return;
     }
 
-    // Store bot token in registry
-    registry.updateToken(userId, tokenText, "settoken command");
+    await respond({
+      response_type: "ephemeral",
+      text: "⏳ Token validated! Provisioning your bot...",
+    });
 
-    // Update K8s secret
     try {
-      const podName = userBot.pod_name;
+      // Store bot token
+      registry.updateToken(userId, tokenText, "settoken command");
+
+      const appId = userBot.app_id;
+      const pod = podNameFromUserId(userId);
+
+      // Update manifest with request_url
+      try {
+        const configClient = new WebClient(config.slackAppConfigurationToken);
+        const updatedManifest = generateManifest({
+          username,
+          suffix: userId.slice(0, 8),
+          appId,
+          eventGatewayUrl: config.eventGatewayUrl,
+        });
+        await configClient.apiCall("apps.manifest.update", {
+          app_id: appId,
+          manifest: JSON.stringify(updatedManifest),
+        });
+        console.log(`[settoken] Updated manifest with request_url for ${appId}`);
+      } catch (err) {
+        console.warn(`[settoken] Manifest update failed: ${(err as Error).message}`);
+      }
+
+      // Create K8s Secret
       await k8sClient.createSecret(userId, {
         "slack-bot-token": tokenText,
       });
-      console.log(`[settoken] Updated K8s secret for ${userId}`);
-    } catch (err) {
-      console.warn(
-        `[settoken] K8s secret update failed: ${(err as Error).message}`
-      );
-    }
+      console.log(`[settoken] Created/updated K8s secret for ${userId}`);
 
-    // Update manifest with request_url now that the app is installed
-    try {
-      const configClient = new WebClient(config.slackAppConfigurationToken);
-      const updatedManifest = generateManifest({
-        username: command.user_name,
-        suffix: userId.slice(0, 8),
-        appId: userBot.app_id,
-        eventGatewayUrl: config.eventGatewayUrl,
-      });
-      await configClient.apiCall("apps.manifest.update", {
-        app_id: userBot.app_id,
-        manifest: JSON.stringify(updatedManifest),
-      });
-      console.log(
-        `[settoken] Updated manifest with request_url for app ${userBot.app_id}`
-      );
-    } catch (err) {
-      console.warn(
-        `[settoken] Manifest update failed: ${(err as Error).message}`
-      );
-    }
+      // Create K8s Pod (if not already running)
+      let podCreated = false;
+      try {
+        const existingPod = await k8sClient.getPodStatus(pod);
+        if (!existingPod) {
+          await k8sClient.createPod(userId, tokenText, username);
+          podCreated = true;
+          console.log(`[settoken] Created pod ${pod}`);
+        }
+      } catch {
+        await k8sClient.createPod(userId, tokenText, username);
+        podCreated = true;
+        console.log(`[settoken] Created pod ${pod}`);
+      }
 
-    await respond({
-      response_type: "ephemeral",
-      text: [
-        "✅ Bot token set and validated!",
-        "",
-        `• App: \`${userBot.app_id}\``,
-        `• Pod: \`${userBot.pod_name}\``,
-        "",
-        "Your bot is now connected. Try:",
-        `• DM *Harry Botter (${command.user_name})* directly`,
-        userBot.channel_id
-          ? `• Or chat in <#${userBot.channel_id}>`
-          : "",
-      ]
-        .filter(Boolean)
-        .join("\n"),
-    });
+      // Create K8s Service
+      try {
+        await k8sClient.createService(userId);
+      } catch (err: any) {
+        if (!String(err?.message || "").includes("AlreadyExists") && !String(err?.message || "").includes("409")) {
+          console.warn(`[settoken] Service creation: ${(err as Error).message}`);
+        }
+      }
+
+      // Wait for pod readiness
+      if (podCreated) {
+        await respond({
+          response_type: "ephemeral",
+          text: `⏳ Pod \`${pod}\` created. Waiting for readiness...`,
+        });
+        const ready = await k8sClient.waitForReady(pod, 90_000);
+        if (!ready) {
+          console.warn(`[settoken] Pod ${pod} not ready within 90s`);
+        }
+      }
+
+      // Restore data from backup if available
+      const hash = userHash(userId);
+      let restoreMessage = "";
+      const latestBackup = getLatestBackup(config, hash);
+      if (latestBackup) {
+        try {
+          await importPodData(config, pod, hash);
+          restoreMessage = `\n📦 Previous data restored`;
+        } catch (err) {
+          restoreMessage = `\n⚠️ Data restore failed: ${(err as Error).message}`;
+        }
+      }
+
+      // Auto-create private channel
+      let channelId = "";
+      let channelMessage = "";
+      try {
+        const channelName = `hb-${username}`.toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 80);
+        const masterClient = new WebClient(config.slackBotToken);
+
+        const createChannelResult = await masterClient.conversations.create({
+          name: channelName,
+          is_private: true,
+        });
+
+        if (createChannelResult.ok && createChannelResult.channel?.id) {
+          channelId = createChannelResult.channel.id;
+
+          // Invite user
+          try {
+            await masterClient.conversations.invite({
+              channel: channelId,
+              users: userId,
+            });
+          } catch {}
+
+          // Register with NanoClaw pod
+          try {
+            const { getPodUrl } = await import("../pod-proxy");
+            const podBaseUrl = await getPodUrl(pod, config.k8sNamespace, 4000);
+            await fetch(`${podBaseUrl}/register-group`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                jid: `http:${channelId}`,
+                name: channelName,
+                folder: "slack_main",
+                isMain: true,
+              }),
+              signal: AbortSignal.timeout(10_000),
+            });
+          } catch (regErr) {
+            console.warn(`[settoken] register-group: ${(regErr as Error).message}`);
+          }
+
+          channelMessage = `\n💬 Your channel: <#${channelId}>`;
+        }
+      } catch (chanErr: any) {
+        if (chanErr?.data?.error !== "name_taken") {
+          console.warn(`[settoken] Channel creation: ${(chanErr as Error).message}`);
+        }
+      }
+
+      // Update registry
+      registry.updateStatus(userId, "active");
+      if (channelId) {
+        registry.updateChannelId(userId, channelId);
+      }
+      // Update pod_name in registry
+      const db = (registry as any).db;
+      if (db) {
+        db.prepare("UPDATE user_bots SET pod_name = ? WHERE slack_user_id = ?").run(pod, userId);
+      }
+
+      console.log(`[settoken] Phase 2 complete: ${userId} → pod=${pod}, app=${appId}`);
+
+      await respond({
+        response_type: "ephemeral",
+        text: [
+          `🎉 Your bot is live!`,
+          ``,
+          `• App: \`${appId}\``,
+          `• Pod: \`${pod}\` — ✅ Running`,
+          restoreMessage,
+          channelMessage,
+          ``,
+          `DM your bot or chat in ${channelId ? `<#${channelId}>` : "a channel"} to start!`,
+        ]
+          .filter(Boolean)
+          .join("\n"),
+      });
+    } catch (err) {
+      console.error(`[settoken] Failed for ${userId}:`, err);
+      await respond({
+        response_type: "ephemeral",
+        text: `❌ Provisioning failed: ${(err as Error).message}`,
+      });
+    }
   };
 }
