@@ -11,6 +11,7 @@ import { configRetentionHandler } from "./commands/config-retention";
 import { exportHandler } from "./commands/export";
 import { joinHandler } from "./commands/join";
 import { settokenHandler } from "./commands/settoken";
+import { authHandler } from "./commands/auth";
 import { startOrphanDetector } from "./orphan-detector";
 import { startEventGateway } from "./event-gateway";
 import { startTokenRotation } from "./token-rotation";
@@ -49,6 +50,8 @@ async function main() {
         return joinHandler(config, registry)(args);
       case "settoken":
         return settokenHandler(config, registry, k8sClient)(args);
+      case "auth":
+        return authHandler(config, registry)(args);
       default:
         await args.ack();
         await args.respond({
