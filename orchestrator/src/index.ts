@@ -90,6 +90,8 @@ async function main() {
     stopTokenRotation();
     gateway.close();
     stopOrphanDetector();
+    const { stopAllPortForwards } = require("./pod-proxy");
+    stopAllPortForwards();
     registry.close();
     process.exit(0);
   };

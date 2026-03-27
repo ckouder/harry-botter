@@ -52,13 +52,10 @@ export function joinHandler(config: Config, registry: Registry) {
     }
 
     const podName = userBot.pod_name;
-    let podHost = `${podName}-svc.${config.k8sNamespace}.svc.cluster.local`;
+    let podBaseUrl = `http://${podName}-svc.${config.k8sNamespace}.svc.cluster.local:4000`;
     try {
-      const k8s = (globalThis as any).__harrybotter_k8s;
-      if (k8s) {
-        const status = await k8s.getPodStatus(podName);
-        if (status?.podIP) podHost = status.podIP;
-      }
+      const { getPodUrl } = await import("../pod-proxy");
+      podBaseUrl = await getPodUrl(podName, config.k8sNamespace, 4000);
     } catch {}
 
     try {
@@ -81,7 +78,7 @@ export function joinHandler(config: Config, registry: Registry) {
 
       // Register the channel with the NanoClaw pod
       const sanitizedName = channelName.replace(/[^a-z0-9_-]/gi, "_");
-      const regResp = await fetch(`http://${podHost}:4000/register-group`, {
+      const regResp = await fetch(`${podBaseUrl}/register-group`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
