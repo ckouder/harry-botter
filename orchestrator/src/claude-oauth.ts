@@ -49,18 +49,18 @@ export function startOAuthSession(): OAuthSession {
   const state = crypto.randomBytes(16).toString("base64url");
 
   // Build authorize URL — matches Claude Code's actual OAuth flow
-  const params = new URLSearchParams({
-    code: "true",
-    client_id: CLIENT_ID,
-    response_type: "code",
-    redirect_uri: REDIRECT_URI,
-    scope: SCOPES,
-    code_challenge: challenge,
-    code_challenge_method: "S256",
-    state,
-  });
+  const params = new URLSearchParams();
+  params.append("client_id", CLIENT_ID);
+  params.append("response_type", "code");
+  params.append("redirect_uri", REDIRECT_URI);
+  params.append("scope", SCOPES);
+  params.append("code_challenge", challenge);
+  params.append("code_challenge_method", "S256");
+  params.append("state", state);
 
   const authorizeUrl = `${AUTHORIZE_URL}?${params.toString()}`;
+
+  console.log(`[claude-oauth] Generated authorize URL: ${authorizeUrl}`);
 
   return { verifier, challenge, state, authorizeUrl };
 }
