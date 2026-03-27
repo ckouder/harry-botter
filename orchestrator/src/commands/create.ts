@@ -32,7 +32,11 @@ export function createHandler(
     await ack();
 
     const userId = command.user_id;
-    const username = command.user_name;
+    const slackUsername = command.user_name;
+    // Parse custom bot name: /harrybotter create My Bot Name
+    const cmdArgs = (command.text || "").replace(/^create\s*/i, "").trim();
+    const customName = cmdArgs || null;
+    const username = customName || slackUsername;
     const channelId = command.channel_id;
 
     // Check if user already has an active bot
