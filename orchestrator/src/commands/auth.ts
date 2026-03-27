@@ -2,9 +2,18 @@ import type {
   AllMiddlewareArgs,
   SlackCommandMiddlewareArgs,
 } from "@slack/bolt";
-import { execSync, spawn } from "child_process";
+import { execSync } from "child_process";
 import type { Registry } from "../registry";
 import type { Config } from "../config";
+import {
+  startOAuthSession,
+  exchangeCodeForTokens,
+  buildCredentialsJson,
+  type OAuthSession,
+} from "../claude-oauth";
+
+// Store pending OAuth sessions (user_id → session)
+const pendingSessions = new Map<string, OAuthSession>();
 
 export function authHandler(config: Config, registry: Registry) {
   return async ({
@@ -29,161 +38,147 @@ export function authHandler(config: Config, registry: Registry) {
     const podName = userBot.pod_name;
     const ns = config.k8sNamespace;
 
-    // If no argument — run `claude setup-token` in pod, capture URL, send to user
+    // No argument → start OAuth flow, send URL to user
     if (!argText) {
+      const session = startOAuthSession();
+      pendingSessions.set(userId, session);
+
       await respond({
         response_type: "ephemeral",
-        text: "🔐 Starting Claude authentication... one moment.",
+        text: [
+          "🔐 *Authenticate Claude Code*",
+          "",
+          `1. <${session.authorizeUrl}|Click here to authenticate with Claude>`,
+          "",
+          "2. After logging in, you'll be redirected to a page with a *code*",
+          "",
+          "3. Copy the code and run:",
+          "   `/harrybotter auth <paste-code-here>`",
+        ].join("\n"),
       });
-
-      try {
-        // Ensure .claude dir exists
-        execSync(
-          `kubectl exec -n ${ns} ${podName} -- sh -c 'mkdir -p /data/.claude && ln -sfn /data/.claude /home/nanoclaw/.claude 2>/dev/null'`,
-          { timeout: 10_000, stdio: ["pipe", "pipe", "pipe"] }
-        );
-
-        // Spawn claude setup-token — it prints a URL then waits.
-        // We capture the URL and kill the process (user completes OAuth in browser).
-        const url = await new Promise<string>((resolve, reject) => {
-          // claude setup-token needs a TTY. Use kubectl exec -t to allocate one.
-          // We also need -i so we can pipe, but capture output.
-          const proc = spawn("kubectl", [
-            "exec", "-t", "-n", ns, podName, "--",
-            "claude", "setup-token",
-          ], { stdio: ["pipe", "pipe", "pipe"] });
-
-          let output = "";
-          const timeout = setTimeout(() => {
-            proc.kill();
-            reject(new Error("Timed out waiting for OAuth URL"));
-          }, 60_000);
-
-          const checkForUrl = (data: Buffer) => {
-            output += data.toString();
-            console.log(`[auth] stdout chunk: ${data.toString().trim()}`);
-            const urlMatch = output.match(/https:\/\/[^\s"'\]]+/);
-            if (urlMatch) {
-              clearTimeout(timeout);
-              proc.kill(); // Got the URL, don't need the process anymore
-              resolve(urlMatch[0]);
-            }
-          };
-
-          proc.stdout?.on("data", checkForUrl);
-          proc.stderr?.on("data", checkForUrl);
-
-          proc.on("error", (err) => {
-            clearTimeout(timeout);
-            reject(err);
-          });
-
-          proc.on("exit", (code) => {
-            clearTimeout(timeout);
-            // If process exits before we find a URL, check output
-            const urlMatch = output.match(/https:\/\/[^\s"'\]]+/);
-            if (urlMatch) {
-              resolve(urlMatch[0]);
-            } else {
-              reject(new Error(`setup-token exited (code ${code}) without URL. Output: ${output.slice(0, 500)}`));
-            }
-          });
-        });
-
-        await respond({
-          response_type: "ephemeral",
-          text: [
-            "🔐 *Claude Authentication*",
-            "",
-            `1. Click to authenticate: ${url}`,
-            "",
-            "2. Complete the login in your browser",
-            "",
-            "3. Copy the token (starts with `sk-ant-oat01-...`) and run:",
-            "   `/harrybotter auth sk-ant-oat01-your-token-here`",
-          ].join("\n"),
-        });
-      } catch (err) {
-        console.error(`[auth] setup-token failed:`, (err as Error).message);
-        await respond({
-          response_type: "ephemeral",
-          text: `❌ Failed to start auth: ${(err as Error).message}`,
-        });
-      }
       return;
     }
 
-    // User provided a token — write it to the pod
+    // User provided a code or token
+    // Check if it's an OAuth code (short) or a direct token (sk-ant-oat01-)
+    if (argText.startsWith("sk-ant-")) {
+      // Direct OAuth token — write it to the pod
+      await writeTokenToPod(ns, podName, argText, userId, respond);
+      return;
+    }
+
+    // It's an OAuth authorization code — exchange for tokens
+    const session = pendingSessions.get(userId);
+    if (!session) {
+      await respond({
+        response_type: "ephemeral",
+        text: [
+          "❌ No pending auth session. Run `/harrybotter auth` first to get the login URL.",
+          "",
+          "Or if you have a token directly, run: `/harrybotter auth sk-ant-oat01-...`",
+        ].join("\n"),
+      });
+      return;
+    }
+
     await respond({
       response_type: "ephemeral",
-      text: "⏳ Saving token to your pod...",
+      text: "⏳ Exchanging code for tokens...",
     });
 
     try {
-      // Write the OAuth token to persistent storage
-      execSync(
-        `kubectl exec -n ${ns} ${podName} -- sh -c 'mkdir -p /data/.claude && echo "${argText.replace(/"/g, '\\"')}" > /data/.claude/oauth_token'`,
-        { timeout: 15_000, stdio: ["pipe", "pipe", "pipe"] }
-      );
-      console.log(`[auth] OAuth token written to pod ${podName}`);
+      const tokens = await exchangeCodeForTokens(argText, session);
+      pendingSessions.delete(userId);
 
-      // Verify claude works
+      console.log(
+        `[auth] Token exchange successful for ${userId} (expires_in: ${tokens.expires_in}s)`
+      );
+
+      // Write credentials to pod
+      const credsJson = buildCredentialsJson(tokens);
+
+      // Also write the access token as CLAUDE_CODE_OAUTH_TOKEN
+      execSync(
+        `kubectl exec -n ${ns} ${podName} -- sh -c 'mkdir -p /data/.claude && ln -sfn /data/.claude /home/nanoclaw/.claude 2>/dev/null'`,
+        { timeout: 10_000, stdio: ["pipe", "pipe", "pipe"] }
+      );
+
+      // Write credentials.json
+      const escapedCreds = credsJson.replace(/'/g, "'\\''");
+      execSync(
+        `kubectl exec -n ${ns} ${podName} -- sh -c 'cat > /data/.claude/.credentials.json << '"'"'ENDCREDS'"'"'\n${escapedCreds}\nENDCREDS'`,
+        { timeout: 10_000, stdio: ["pipe", "pipe", "pipe"] }
+      );
+
+      // Also write the access token for entrypoint env var
+      execSync(
+        `kubectl exec -n ${ns} ${podName} -- sh -c 'echo "${tokens.access_token}" > /data/.claude/oauth_token'`,
+        { timeout: 10_000, stdio: ["pipe", "pipe", "pipe"] }
+      );
+
+      console.log(`[auth] Credentials written to pod ${podName}`);
+
+      // Restart pod to pick up the token
+      try {
+        execSync(`kubectl delete pod -n ${ns} ${podName}`, {
+          timeout: 30_000,
+          stdio: ["pipe", "pipe", "pipe"],
+        });
+      } catch {}
+
       await respond({
         response_type: "ephemeral",
-        text: "⏳ Verifying Claude access...",
+        text: [
+          "✅ Claude authenticated! Your bot is restarting.",
+          "",
+          "Give it ~30 seconds, then try messaging your bot!",
+        ].join("\n"),
       });
-
-      try {
-        const result = execSync(
-          `kubectl exec -n ${ns} ${podName} -- sh -c 'CLAUDE_CODE_OAUTH_TOKEN=$(cat /data/.claude/oauth_token) claude -p "Say OK" --output-format text'`,
-          { timeout: 120_000, encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] }
-        );
-        console.log(`[auth] Verified: ${result.trim().slice(0, 100)}`);
-
-        // Restart the pod to pick up the token via entrypoint
-        try {
-          execSync(
-            `kubectl delete pod -n ${ns} ${podName}`,
-            { timeout: 30_000, stdio: ["pipe", "pipe", "pipe"] }
-          );
-          console.log(`[auth] Pod ${podName} restarting to load token`);
-        } catch {}
-
-        await respond({
-          response_type: "ephemeral",
-          text: [
-            "✅ Claude authenticated! Your bot is restarting to load the token.",
-            "",
-            "Give it ~30 seconds, then try messaging your bot!",
-          ].join("\n"),
-        });
-      } catch (verifyErr) {
-        // Token saved even if verification fails — might work after restart
-        console.warn(`[auth] Verification failed: ${(verifyErr as Error).message}`);
-
-        // Still restart to pick up the token
-        try {
-          execSync(
-            `kubectl delete pod -n ${ns} ${podName}`,
-            { timeout: 30_000, stdio: ["pipe", "pipe", "pipe"] }
-          );
-        } catch {}
-
-        await respond({
-          response_type: "ephemeral",
-          text: [
-            "⚠️ Token saved. Verification was slow (Claude may need a moment).",
-            "",
-            "Your pod is restarting. Try messaging your bot in ~30 seconds.",
-          ].join("\n"),
-        });
-      }
     } catch (err) {
-      console.error(`[auth] Failed for ${userId}:`, (err as Error).message);
+      console.error(`[auth] Token exchange failed:`, (err as Error).message);
+      pendingSessions.delete(userId);
       await respond({
         response_type: "ephemeral",
         text: `❌ Authentication failed: ${(err as Error).message}`,
       });
     }
   };
+}
+
+async function writeTokenToPod(
+  ns: string,
+  podName: string,
+  token: string,
+  userId: string,
+  respond: any
+) {
+  try {
+    execSync(
+      `kubectl exec -n ${ns} ${podName} -- sh -c 'mkdir -p /data/.claude && echo "${token}" > /data/.claude/oauth_token && ln -sfn /data/.claude /home/nanoclaw/.claude 2>/dev/null'`,
+      { timeout: 15_000, stdio: ["pipe", "pipe", "pipe"] }
+    );
+
+    // Restart pod
+    try {
+      execSync(`kubectl delete pod -n ${ns} ${podName}`, {
+        timeout: 30_000,
+        stdio: ["pipe", "pipe", "pipe"],
+      });
+    } catch {}
+
+    console.log(`[auth] Direct token written for ${userId}`);
+    await respond({
+      response_type: "ephemeral",
+      text: [
+        "✅ Token saved! Your bot is restarting.",
+        "",
+        "Give it ~30 seconds, then try messaging your bot!",
+      ].join("\n"),
+    });
+  } catch (err) {
+    await respond({
+      response_type: "ephemeral",
+      text: `❌ Failed to write token: ${(err as Error).message}`,
+    });
+  }
 }
