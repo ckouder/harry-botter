@@ -9,6 +9,8 @@ export interface Config {
   slackAppToken: string;
   /** App Configuration Token for Manifest API (xoxe-...) */
   slackAppConfigurationToken: string;
+  /** Refresh token for rotating the App Configuration Token (optional — for initial setup) */
+  slackAppConfigRefreshToken?: string;
   /** Path to SQLite database file */
   databasePath: string;
   /** Kubernetes namespace for NanoClaw pods */
@@ -51,6 +53,7 @@ export function loadConfig(): Config {
     slackBotToken: required("SLACK_BOT_TOKEN"),
     slackAppToken: required("SLACK_APP_TOKEN"),
     slackAppConfigurationToken: required("SLACK_APP_CONFIGURATION_TOKEN"),
+    slackAppConfigRefreshToken: process.env.SLACK_APP_CONFIGURATION_REFRESH_TOKEN || undefined,
     databasePath: process.env.DATABASE_PATH || "./data/harry-botter.db",
     k8sNamespace: process.env.K8S_NAMESPACE || "harrybotter",
     defaultRetentionMode: defaultRetention,

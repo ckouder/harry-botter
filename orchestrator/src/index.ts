@@ -12,6 +12,7 @@ import { exportHandler } from "./commands/export";
 import { joinHandler } from "./commands/join";
 import { startOrphanDetector } from "./orphan-detector";
 import { startEventGateway } from "./event-gateway";
+import { startTokenRotation } from "./token-rotation";
 
 async function main() {
   const config = loadConfig();
@@ -65,6 +66,9 @@ async function main() {
   await app.start();
   console.log("⚡ Harry Botter Orchestrator is running (Socket Mode)");
 
+  // Start token rotation for App Configuration Token
+  const stopTokenRotation = startTokenRotation(config, registry);
+
   // Start HTTP event gateway for per-user apps
   const gateway = startEventGateway({ config, registry });
   console.log(`⚡ Event Gateway public URL: ${config.eventGatewayUrl}`);
@@ -79,6 +83,7 @@ async function main() {
   // Graceful shutdown
   const shutdown = () => {
     console.log("Shutting down...");
+    stopTokenRotation();
     gateway.close();
     stopOrphanDetector();
     registry.close();

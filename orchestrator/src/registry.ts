@@ -46,6 +46,12 @@ export class Registry {
         retention_mode TEXT NOT NULL DEFAULT 'retain'
       );
 
+      CREATE TABLE IF NOT EXISTS config (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL,
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+
       CREATE TABLE IF NOT EXISTS token_rotations (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         slack_user_id TEXT NOT NULL REFERENCES user_bots(slack_user_id),
@@ -192,6 +198,22 @@ export class Registry {
       .prepare("SELECT COUNT(*) as count FROM user_bots WHERE status = 'active'")
       .get() as { count: number };
     return row.count;
+  }
+
+  getConfig(key: string): string | undefined {
+    const row = this.db
+      .prepare("SELECT value FROM config WHERE key = ?")
+      .get(key) as { value: string } | undefined;
+    return row?.value;
+  }
+
+  setConfig(key: string, value: string): void {
+    this.db
+      .prepare(
+        `INSERT INTO config (key, value, updated_at) VALUES (?, ?, datetime('now'))
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
+      )
+      .run(key, value);
   }
 
   close(): void {
