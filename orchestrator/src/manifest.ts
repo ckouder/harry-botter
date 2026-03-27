@@ -24,10 +24,8 @@ export type SlackManifest = Record<string, unknown>;
  * "Harry Botter (username)" rather than a shared bot identity.
  */
 export function generateManifest(opts: ManifestOptions): SlackManifest {
-  const botName = `Harry Botter (${opts.username})`;
-  // Slack app names max 35 chars
-  const appName =
-    botName.length > 35 ? `HB (${opts.username})`.slice(0, 35) : botName;
+  // Use the username directly as the bot name (custom name or Slack username)
+  const appName = opts.username.slice(0, 35);
 
   return {
     _metadata: {

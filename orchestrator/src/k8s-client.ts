@@ -61,7 +61,7 @@ export class K8sClient {
     return namespace || this.defaultNamespace;
   }
 
-  async createPod(userId: string, botToken: string): Promise<string> {
+  async createPod(userId: string, botToken: string, assistantName?: string): Promise<string> {
     const name = podNameFromUserId(userId);
     const labels = userLabels(userId);
 
@@ -115,7 +115,7 @@ export class K8sClient {
               },
               {
                 name: "ASSISTANT_NAME",
-                value: "Harry Botter",
+                value: assistantName || "Harry Botter",
               },
               {
                 name: "HTTP_WEBHOOK_ENABLED",

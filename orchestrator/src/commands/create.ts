@@ -158,7 +158,7 @@ export function createHandler(
 
       // Create the K8s Pod
       try {
-        await k8sClient.createPod(userId, botToken);
+        await k8sClient.createPod(userId, botToken, username);
         console.log(`[create] Created K8s Pod ${pod}`);
       } catch (err) {
         // Cleanup: delete secret and Slack app
