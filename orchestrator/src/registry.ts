@@ -181,6 +181,10 @@ export class Registry {
   }
 
   delete(userId: string): boolean {
+    // Delete dependent records first (token_rotations has FK on user_bots)
+    this.db
+      .prepare("DELETE FROM token_rotations WHERE slack_user_id = ?")
+      .run(userId);
     const result = this.db
       .prepare("DELETE FROM user_bots WHERE slack_user_id = ?")
       .run(userId);
