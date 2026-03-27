@@ -46,9 +46,11 @@ export function authHandler(config: Config, registry: Registry) {
         // Spawn claude setup-token — it prints a URL then waits.
         // We capture the URL and kill the process (user completes OAuth in browser).
         const url = await new Promise<string>((resolve, reject) => {
-          const proc = spawn("kubectl", [
-            "exec", "-n", ns, podName, "--",
-            "claude", "setup-token",
+          // Use `script` to provide a PTY since claude setup-token requires TTY
+          const proc = spawn("script", [
+            "-qc",
+            `kubectl exec -i -n ${ns} ${podName} -- claude setup-token`,
+            "/dev/null",
           ], { stdio: ["pipe", "pipe", "pipe"] });
 
           let output = "";
