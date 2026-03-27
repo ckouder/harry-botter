@@ -18,6 +18,7 @@ async function main() {
   const config = loadConfig();
   const registry = new Registry(config.databasePath);
   const k8sClient = new K8sClient(config);
+  (globalThis as any).__harrybotter_k8s = k8sClient; // expose for event-gateway pod IP lookup
   const userLock = new UserLock();
 
   const app = new App({

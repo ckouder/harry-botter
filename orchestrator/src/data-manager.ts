@@ -122,7 +122,7 @@ export async function importPodData(
 
   // Extract into root (tar was created with -C / data, so it extracts to /data)
   execSync(
-    `kubectl exec -n ${ns} ${podName} -- tar xzf ${remoteTar} -C /`,
+    `kubectl exec -n ${ns} ${podName} -- tar xzf ${remoteTar} -C / --no-same-owner --no-same-permissions`,
     { stdio: "pipe", timeout: 300_000 }
   );
 

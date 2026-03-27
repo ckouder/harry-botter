@@ -12,6 +12,7 @@ export interface PodStatus {
   ready: boolean;
   restartCount: number;
   startTime: string | null;
+  podIP: string | null;
   conditions: Array<{ type: string; status: string }>;
 }
 
@@ -219,6 +220,7 @@ export class K8sClient {
         startTime: status?.startTime
           ? new Date(status.startTime).toISOString()
           : null,
+        podIP: status?.podIP || null,
         conditions:
           status?.conditions?.map((c) => ({
             type: c.type,
@@ -252,6 +254,7 @@ export class K8sClient {
         startTime: pod.status?.startTime
           ? new Date(pod.status.startTime).toISOString()
           : null,
+        podIP: pod.status?.podIP || null,
         conditions:
           pod.status?.conditions?.map((c) => ({
             type: c.type,

@@ -259,9 +259,16 @@ export function createHandler(
           }
 
           // Register the channel with the NanoClaw pod
-          const svcHost = `${pod}-svc.${config.k8sNamespace}.svc.cluster.local`;
+          // Use pod IP directly (orchestrator runs outside K8s, can't resolve svc.cluster.local)
+          let podHost = `${pod}-svc.${config.k8sNamespace}.svc.cluster.local`;
           try {
-            const regResp = await fetch(`http://${svcHost}:4000/register-group`, {
+            const podStatus = await k8sClient.getPodStatus(pod);
+            if (podStatus && podStatus.podIP) {
+              podHost = podStatus.podIP;
+            }
+          } catch {}
+          try {
+            const regResp = await fetch(`http://${podHost}:4000/register-group`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({

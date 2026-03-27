@@ -66,10 +66,17 @@ async function forwardToPod(
   k8sNamespace: string,
   event: NonNullable<SlackEvent["event"]>
 ): Promise<string | null> {
-  // In-cluster, pods are reachable via service DNS:
-  // <pod-name>-svc.<namespace>.svc.cluster.local
-  const svcHost = `${podName}-svc.${k8sNamespace}.svc.cluster.local`;
-  const url = `http://${svcHost}:${NANOCLAW_MESSAGE_PORT}/message`;
+  // Try pod IP first (works when orchestrator runs outside K8s),
+  // fall back to service DNS (works inside K8s)
+  let host = `${podName}-svc.${k8sNamespace}.svc.cluster.local`;
+  try {
+    const k8sClient = (globalThis as any).__harrybotter_k8s;
+    if (k8sClient) {
+      const status = await k8sClient.getPodStatus(podName);
+      if (status?.podIP) host = status.podIP;
+    }
+  } catch {}
+  const url = `http://${host}:${NANOCLAW_MESSAGE_PORT}/message`;
 
   try {
     const resp = await fetch(url, {

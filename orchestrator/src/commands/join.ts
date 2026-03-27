@@ -52,7 +52,14 @@ export function joinHandler(config: Config, registry: Registry) {
     }
 
     const podName = userBot.pod_name;
-    const svcHost = `${podName}-svc.${config.k8sNamespace}.svc.cluster.local`;
+    let podHost = `${podName}-svc.${config.k8sNamespace}.svc.cluster.local`;
+    try {
+      const k8s = (globalThis as any).__harrybotter_k8s;
+      if (k8s) {
+        const status = await k8s.getPodStatus(podName);
+        if (status?.podIP) podHost = status.podIP;
+      }
+    } catch {}
 
     try {
       // Invite master bot to the channel (so it can read messages)
@@ -74,7 +81,7 @@ export function joinHandler(config: Config, registry: Registry) {
 
       // Register the channel with the NanoClaw pod
       const sanitizedName = channelName.replace(/[^a-z0-9_-]/gi, "_");
-      const regResp = await fetch(`http://${svcHost}:4000/register-group`, {
+      const regResp = await fetch(`http://${podHost}:4000/register-group`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
