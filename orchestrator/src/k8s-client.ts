@@ -122,6 +122,18 @@ export class K8sClient {
                 value: "true",
               },
               {
+                name: "NANOCLAW_STORE_DIR",
+                value: "/data/store",
+              },
+              {
+                name: "NANOCLAW_GROUPS_DIR",
+                value: "/data/groups",
+              },
+              {
+                name: "NANOCLAW_DATA_DIR",
+                value: "/data/data",
+              },
+              {
                 name: "HEALTHCHECK_PORT",
                 value: "4000",
               },
